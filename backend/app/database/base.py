@@ -1,1 +1,5 @@
-# Database model base metadata will live here when models are added.
+from sqlalchemy.orm import DeclarativeBase
+
+
+class Base(DeclarativeBase):
+    pass
