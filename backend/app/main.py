@@ -1,9 +1,13 @@
 from fastapi import FastAPI
 
+from app.api.routes.clientes import router as clientes_router
 from app.api.routes.health import router as health_router
+from app.api.routes.procesos import router as procesos_router
 from app.core.config import settings
 
 
 app = FastAPI(title=settings.project_name)
 
 app.include_router(health_router)
+app.include_router(clientes_router)
+app.include_router(procesos_router)

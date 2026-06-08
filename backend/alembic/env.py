@@ -12,6 +12,8 @@ if str(backend_dir) not in sys.path:
 
 from app.core.config import settings
 from app.database.base import Base
+import app.models  # noqa: F401
+from app.models import Cliente, ConfiguracionProceso, Proceso, Usuario  # noqa: F401
 
 
 config = context.config
@@ -22,6 +24,7 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
+print("ALEMBIC TABLES:", list(target_metadata.tables.keys()))
 
 def run_migrations_offline() -> None:
     context.configure(
