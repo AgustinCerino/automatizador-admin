@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.routes.auth import get_current_user, require_admin
 from app.database.session import get_db
-from app.models import Cliente, Proceso
+from app.models import Cliente, Proceso, Usuario
 from app.schemas.proceso import ProcesoCreate, ProcesoRead, ProcesoUpdate
 
 
@@ -32,6 +33,7 @@ def ensure_cliente_exists(db: Session, cliente_id: int) -> None:
 def list_procesos(
     cliente_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
 ) -> list[Proceso]:
     statement = select(Proceso).order_by(Proceso.id)
     if cliente_id is not None:
@@ -45,6 +47,7 @@ def list_procesos(
 def create_proceso(
     proceso_in: ProcesoCreate,
     db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_admin),
 ) -> Proceso:
     ensure_cliente_exists(db, proceso_in.cliente_id)
 
@@ -56,7 +59,11 @@ def create_proceso(
 
 
 @router.get("/{proceso_id}", response_model=ProcesoRead)
-def read_proceso(proceso_id: int, db: Session = Depends(get_db)) -> Proceso:
+def read_proceso(
+    proceso_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+) -> Proceso:
     return get_proceso_or_404(db, proceso_id)
 
 
@@ -65,6 +72,7 @@ def update_proceso(
     proceso_id: int,
     proceso_in: ProcesoUpdate,
     db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_admin),
 ) -> Proceso:
     proceso = get_proceso_or_404(db, proceso_id)
     update_data = proceso_in.model_dump(exclude_unset=True)
@@ -81,7 +89,11 @@ def update_proceso(
 
 
 @router.delete("/{proceso_id}", response_model=ProcesoRead)
-def delete_proceso(proceso_id: int, db: Session = Depends(get_db)) -> Proceso:
+def delete_proceso(
+    proceso_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_admin),
+) -> Proceso:
     proceso = get_proceso_or_404(db, proceso_id)
     proceso.estado = "INACTIVO"
 
