@@ -4,4 +4,6 @@ pydantic-settings
 SQLAlchemy>=2.0
 psycopg2-binary
 alembic
+passlib[bcrypt]
+bcrypt<4.1
 python-dotenv
