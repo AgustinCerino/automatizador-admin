@@ -1,4 +1,13 @@
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -6,6 +15,13 @@ from app.api.routes.auth import get_current_user
 from app.database.session import get_db
 from app.models import Archivo, EjecucionProceso, Usuario
 from app.schemas.archivo import ArchivoRead
+from app.schemas.archivo_preview import ArchivoPreviewRead
+from app.services.file_preview_service import (
+    FilePreviewError,
+    StoredFileNotFoundError,
+    UnsupportedPreviewExtensionError,
+    build_file_preview,
+)
 from app.services.file_service import get_extension, save_upload_file
 
 
@@ -18,6 +34,16 @@ def ensure_ejecucion_exists(db: Session, ejecucion_id: int) -> None:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Ejecución no encontrada",
         )
+
+
+def get_archivo_or_404(db: Session, archivo_id: int) -> Archivo:
+    archivo = db.get(Archivo, archivo_id)
+    if archivo is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Archivo no encontrado",
+        )
+    return archivo
 
 
 @router.post(
@@ -72,3 +98,31 @@ def list_archivos_por_ejecucion(
         .order_by(Archivo.id),
     )
     return list(result.scalars().all())
+
+
+@router.get("/{archivo_id}/preview", response_model=ArchivoPreviewRead)
+def preview_archivo(
+    archivo_id: int,
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+) -> dict:
+    archivo = get_archivo_or_404(db, archivo_id)
+
+    try:
+        return build_file_preview(archivo, limit)
+    except StoredFileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except UnsupportedPreviewExtensionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except FilePreviewError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
