@@ -1,11 +1,15 @@
+from app.models.archivo import Archivo
 from app.models.cliente import Cliente
-from app.models.usuario import Usuario
-from app.models.proceso import Proceso
 from app.models.configuracion_proceso import ConfiguracionProceso
+from app.models.ejecucion_proceso import EjecucionProceso
+from app.models.proceso import Proceso
+from app.models.usuario import Usuario
 
 __all__ = [
+    "Archivo",
     "Cliente",
-    "Usuario",
-    "Proceso",
     "ConfiguracionProceso",
+    "EjecucionProceso",
+    "Proceso",
+    "Usuario",
 ]

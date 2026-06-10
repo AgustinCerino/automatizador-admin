@@ -1,6 +1,6 @@
 from jose import JWTError
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -16,7 +16,7 @@ from app.schemas.usuario import UsuarioRead
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
 
 def get_user_by_email(db: Session, email: str) -> Usuario | None:
@@ -74,12 +74,8 @@ def require_admin(
     return current_user
 
 
-@router.post("/login", response_model=TokenResponse)
-def login(
-    credentials: LoginRequest,
-    db: Session = Depends(get_db),
-) -> TokenResponse:
-    user = get_user_by_email(db, credentials.email)
+def authenticate_user(db: Session, email: str, password: str) -> Usuario:
+    user = get_user_by_email(db, email)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -93,19 +89,41 @@ def login(
             detail="Usuario inactivo",
         )
 
-    if not verify_password(credentials.password, user.password_hash):
+    if not verify_password(password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales inválidas",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    return user
+
+
+def build_token_response(user: Usuario) -> TokenResponse:
     access_token = create_access_token(data={"sub": str(user.id)})
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
         user=UsuarioRead.model_validate(user),
     )
+
+
+@router.post("/login", response_model=TokenResponse)
+def login(
+    credentials: LoginRequest,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    user = authenticate_user(db, credentials.email, credentials.password)
+    return build_token_response(user)
+
+
+@router.post("/token", response_model=TokenResponse)
+def token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    user = authenticate_user(db, form_data.username, form_data.password)
+    return build_token_response(user)
 
 
 @router.get("/me", response_model=UsuarioRead)

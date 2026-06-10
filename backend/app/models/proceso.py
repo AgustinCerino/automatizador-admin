@@ -11,6 +11,7 @@ from app.database.base import Base
 if TYPE_CHECKING:
     from app.models.cliente import Cliente
     from app.models.configuracion_proceso import ConfiguracionProceso
+    from app.models.ejecucion_proceso import EjecucionProceso
 
 
 class Proceso(Base):
@@ -43,5 +44,8 @@ class Proceso(Base):
 
     cliente: Mapped[Cliente] = relationship(back_populates="procesos")
     configuraciones: Mapped[list[ConfiguracionProceso]] = relationship(
+        back_populates="proceso",
+    )
+    ejecuciones: Mapped[list[EjecucionProceso]] = relationship(
         back_populates="proceso",
     )

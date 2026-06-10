@@ -10,6 +10,7 @@ from app.database.base import Base
 
 if TYPE_CHECKING:
     from app.models.cliente import Cliente
+    from app.models.ejecucion_proceso import EjecucionProceso
 
 
 class Usuario(Base):
@@ -47,3 +48,6 @@ class Usuario(Base):
     )
 
     cliente: Mapped[Cliente] = relationship(back_populates="usuarios")
+    ejecuciones: Mapped[list[EjecucionProceso]] = relationship(
+        back_populates="usuario",
+    )
