@@ -16,6 +16,11 @@ from app.schemas.resultado_conciliacion import (
     ConciliacionResumenRead,
     ResultadoConciliacionRead,
 )
+from app.schemas.resultado_revision import (
+    RechazarEjecucionRequest,
+    ResultadoRevisionUpdate,
+    RevisionResumenRead,
+)
 from app.schemas.usuario import UsuarioRead
 
 __all__ = [
@@ -36,5 +41,8 @@ __all__ = [
     "ProcesoUpdate",
     "ConciliacionResumenRead",
     "ResultadoConciliacionRead",
+    "RechazarEjecucionRequest",
+    "ResultadoRevisionUpdate",
+    "RevisionResumenRead",
     "UsuarioRead",
 ]
