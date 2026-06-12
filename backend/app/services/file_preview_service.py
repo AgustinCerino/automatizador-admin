@@ -86,6 +86,8 @@ def serialize_value(value: Any) -> Any:
             return None
     except (TypeError, ValueError):
         pass
+    if hasattr(value, "item"):
+        return value.item()
     return value
 
 

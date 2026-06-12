@@ -11,6 +11,7 @@ from app.database.base import Base
 if TYPE_CHECKING:
     from app.models.archivo import Archivo
     from app.models.proceso import Proceso
+    from app.models.resultado_conciliacion import ResultadoConciliacion
     from app.models.usuario import Usuario
 
 
@@ -52,3 +53,6 @@ class EjecucionProceso(Base):
     proceso: Mapped[Proceso] = relationship(back_populates="ejecuciones")
     usuario: Mapped[Usuario] = relationship(back_populates="ejecuciones")
     archivos: Mapped[list[Archivo]] = relationship(back_populates="ejecucion")
+    resultados_conciliacion: Mapped[list[ResultadoConciliacion]] = relationship(
+        back_populates="ejecucion",
+    )

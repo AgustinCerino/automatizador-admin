@@ -12,6 +12,10 @@ from app.schemas.ejecucion_proceso import (
     EjecucionProcesoUpdate,
 )
 from app.schemas.proceso import ProcesoCreate, ProcesoRead, ProcesoUpdate
+from app.schemas.resultado_conciliacion import (
+    ConciliacionResumenRead,
+    ResultadoConciliacionRead,
+)
 from app.schemas.usuario import UsuarioRead
 
 __all__ = [
@@ -30,5 +34,7 @@ __all__ = [
     "ProcesoCreate",
     "ProcesoRead",
     "ProcesoUpdate",
+    "ConciliacionResumenRead",
+    "ResultadoConciliacionRead",
     "UsuarioRead",
 ]
