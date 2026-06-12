@@ -56,6 +56,24 @@ def read_file_dataframe(path: Path, extension: str) -> pd.DataFrame:
         raise FilePreviewError(f"No se pudo leer el archivo: {exc}") from exc
 
 
+def get_file_columns(archivo: Archivo) -> list[str]:
+    extension = validate_preview_extension(archivo.extension)
+    path = resolve_storage_path(archivo.ruta_storage)
+
+    if not path.exists() or not path.is_file():
+        raise StoredFileNotFoundError("El archivo físico no existe")
+
+    try:
+        if extension == ".csv":
+            df = pd.read_csv(path, nrows=0)
+        else:
+            df = pd.read_excel(path, nrows=0)
+    except Exception as exc:
+        raise FilePreviewError(f"No se pudo leer el archivo: {exc}") from exc
+
+    return [str(column) for column in df.columns]
+
+
 def serialize_value(value: Any) -> Any:
     if isinstance(value, pd.Timestamp):
         return value.isoformat()
