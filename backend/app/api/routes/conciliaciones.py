@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.routes.auth import get_current_user, require_admin
@@ -29,6 +30,7 @@ from app.services.conciliacion_revision_service import (
     reject_execution,
     update_resultado_revision,
 )
+from app.services.conciliacion_export_service import export_reconciliation_results
 from app.services.conciliacion_mapping_service import (
     ConciliacionMappingError,
     get_conciliacion_mapping,
@@ -130,6 +132,27 @@ def read_results(
         return list_reconciliation_results(db, ejecucion_id, estado_resultado)
     except ConciliacionMappingError as exc:
         raise_mapping_http_error(exc)
+
+
+@router.get("/{ejecucion_id}/exportar")
+def export_results(
+    ejecucion_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+) -> FileResponse:
+    try:
+        output_path = export_reconciliation_results(db, ejecucion_id)
+    except ConciliacionRevisionError as exc:
+        raise_revision_http_error(exc)
+
+    return FileResponse(
+        path=output_path,
+        filename=output_path.name,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument."
+            "spreadsheetml.sheet"
+        ),
+    )
 
 
 @router.get(
