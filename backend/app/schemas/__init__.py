@@ -21,6 +21,13 @@ from app.schemas.resultado_revision import (
     ResultadoRevisionUpdate,
     RevisionResumenRead,
 )
+from app.schemas.transformacion_excel import (
+    OutputColumnTransform,
+    TransformacionExcelConfig,
+    TransformacionOutputConfig,
+    TransformacionRowsConfig,
+    TransformacionSourceConfig,
+)
 from app.schemas.usuario import UsuarioRead
 
 __all__ = [
@@ -44,5 +51,10 @@ __all__ = [
     "RechazarEjecucionRequest",
     "ResultadoRevisionUpdate",
     "RevisionResumenRead",
+    "OutputColumnTransform",
+    "TransformacionExcelConfig",
+    "TransformacionOutputConfig",
+    "TransformacionRowsConfig",
+    "TransformacionSourceConfig",
     "UsuarioRead",
 ]

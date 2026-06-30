@@ -95,6 +95,38 @@ def get_or_create_proceso(db: Session, cliente: Cliente) -> Proceso:
     return proceso
 
 
+def get_or_create_proceso_transformacion_excel(
+    db: Session,
+    cliente: Cliente,
+) -> Proceso:
+    proceso = db.execute(
+        select(Proceso).where(
+            Proceso.cliente_id == cliente.id,
+            Proceso.tipo == "TRANSFORMACION_EXCEL",
+            Proceso.nombre == "Transformación Excel",
+        ),
+    ).scalar_one_or_none()
+
+    if proceso is not None:
+        print(f"Reutilizando proceso: {proceso.nombre} (id={proceso.id})")
+        return proceso
+
+    proceso = Proceso(
+        cliente_id=cliente.id,
+        nombre="Transformación Excel",
+        tipo="TRANSFORMACION_EXCEL",
+        descripcion=(
+            "Proceso para transformar archivos Excel o CSV en archivos "
+            "de salida configurables."
+        ),
+        estado="ACTIVO",
+    )
+    db.add(proceso)
+    db.flush()
+    print(f"Proceso creado: {proceso.nombre} (id={proceso.id})")
+    return proceso
+
+
 def get_or_create_configuracion(
     db: Session,
     proceso: Proceso,
@@ -136,6 +168,7 @@ def main() -> None:
         get_or_create_usuario_admin(db, cliente)
         proceso = get_or_create_proceso(db, cliente)
         get_or_create_configuracion(db, proceso)
+        get_or_create_proceso_transformacion_excel(db, cliente)
 
         db.commit()
         print("Seed inicial completado correctamente.")
