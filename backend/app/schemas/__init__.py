@@ -28,6 +28,11 @@ from app.schemas.transformacion_excel import (
     TransformacionRowsConfig,
     TransformacionSourceConfig,
 )
+from app.schemas.transformacion_excel_inspeccion import (
+    TransformacionExcelColumnInspectionRead,
+    TransformacionExcelInspectionWarningRead,
+    TransformacionExcelStructureRead,
+)
 from app.schemas.usuario import UsuarioRead
 
 __all__ = [
@@ -53,8 +58,11 @@ __all__ = [
     "RevisionResumenRead",
     "OutputColumnTransform",
     "TransformacionExcelConfig",
+    "TransformacionExcelColumnInspectionRead",
+    "TransformacionExcelInspectionWarningRead",
     "TransformacionOutputConfig",
     "TransformacionRowsConfig",
     "TransformacionSourceConfig",
+    "TransformacionExcelStructureRead",
     "UsuarioRead",
 ]

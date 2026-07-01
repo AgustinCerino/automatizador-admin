@@ -1,0 +1,4 @@
+﻿Fecha de operación,Cliente,Medio de pago,Importe total,Estado
+2026-06-01,Cliente Uno,Efectivo,1500.50,APROBADO
+2026-06-02,Cliente Dos,Tarjeta,2000.00,PAGADO
+2026-06-03,Cliente Tres,Transferencia,0,PENDIENTE

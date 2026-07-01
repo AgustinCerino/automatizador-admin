@@ -7,6 +7,7 @@ from app.api.routes.conciliaciones import router as conciliaciones_router
 from app.api.routes.ejecuciones import router as ejecuciones_router
 from app.api.routes.health import router as health_router
 from app.api.routes.procesos import router as procesos_router
+from app.api.routes.transformaciones_excel import router as transformaciones_excel_router
 from app.core.config import settings
 
 
@@ -19,3 +20,4 @@ app.include_router(procesos_router)
 app.include_router(ejecuciones_router)
 app.include_router(archivos_router)
 app.include_router(conciliaciones_router)
+app.include_router(transformaciones_excel_router)
