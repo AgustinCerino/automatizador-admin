@@ -4,8 +4,17 @@ from sqlalchemy.orm import Session
 from app.api.routes.auth import get_current_user
 from app.database.session import get_db
 from app.models import Usuario
+from app.schemas.transformacion_excel import (
+    TransformacionExcelConfig,
+    TransformacionExcelConfigRead,
+)
 from app.schemas.transformacion_excel_inspeccion import (
     TransformacionExcelStructureRead,
+)
+from app.services.transformacion_excel_config_service import (
+    TransformacionExcelConfigError,
+    get_saved_transformacion_config,
+    save_transformacion_config,
 )
 from app.services.transformacion_excel_inspeccion_service import (
     TransformacionExcelInspeccionError,
@@ -17,6 +26,10 @@ router = APIRouter(
     prefix="/transformaciones-excel",
     tags=["Transformaciones Excel"],
 )
+
+
+def raise_config_http_error(exc: TransformacionExcelConfigError) -> None:
+    raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @router.get(
@@ -41,3 +54,34 @@ def inspect_archivo_structure(
         )
     except TransformacionExcelInspeccionError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{ejecucion_id}/configuracion",
+    response_model=TransformacionExcelConfigRead,
+)
+def save_configuracion_transformacion(
+    ejecucion_id: int,
+    config: TransformacionExcelConfig,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+) -> dict:
+    try:
+        return save_transformacion_config(db, ejecucion_id, config, current_user)
+    except TransformacionExcelConfigError as exc:
+        raise_config_http_error(exc)
+
+
+@router.get(
+    "/{ejecucion_id}/configuracion",
+    response_model=TransformacionExcelConfigRead,
+)
+def read_configuracion_transformacion(
+    ejecucion_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+) -> dict:
+    try:
+        return get_saved_transformacion_config(db, ejecucion_id, current_user)
+    except TransformacionExcelConfigError as exc:
+        raise_config_http_error(exc)

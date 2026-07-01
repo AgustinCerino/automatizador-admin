@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -369,3 +370,13 @@ class TransformacionExcelConfig(BaseModel):
             )
 
         return self
+
+
+class TransformacionExcelConfigRead(BaseModel):
+    ejecucion_id: int
+    estado_ejecucion: str
+    configuracion: TransformacionExcelConfig
+    updated_at: datetime | None
+
+
+TransformacionExcelConfigSaveResponse = TransformacionExcelConfigRead

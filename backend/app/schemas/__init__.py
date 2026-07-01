@@ -24,6 +24,8 @@ from app.schemas.resultado_revision import (
 from app.schemas.transformacion_excel import (
     OutputColumnTransform,
     TransformacionExcelConfig,
+    TransformacionExcelConfigRead,
+    TransformacionExcelConfigSaveResponse,
     TransformacionOutputConfig,
     TransformacionRowsConfig,
     TransformacionSourceConfig,
@@ -58,6 +60,8 @@ __all__ = [
     "RevisionResumenRead",
     "OutputColumnTransform",
     "TransformacionExcelConfig",
+    "TransformacionExcelConfigRead",
+    "TransformacionExcelConfigSaveResponse",
     "TransformacionExcelColumnInspectionRead",
     "TransformacionExcelInspectionWarningRead",
     "TransformacionOutputConfig",
