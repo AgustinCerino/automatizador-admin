@@ -40,8 +40,8 @@ No hay README ni documentación funcional previa inspeccionada en el repositorio
 | --- | --- | --- |
 | Rama actual | `main` | `git branch --show-current` |
 | Estado antes de documentar | Sin archivos modificados reportados | `git status --short` sin salida antes de crear este documento |
-| Estado actual posterior a crear/modificar el handoff | `?? docs/` | `git status --short` ejecutado después de crear `docs/PROJECT_HANDOFF.md` |
-| Estado actual específico del handoff | `?? docs/PROJECT_HANDOFF.md` | `git status --short docs\PROJECT_HANDOFF.md` |
+| Estado observado durante la elaboración del handoff, antes de su commit | `?? docs/` | `git status --short` ejecutado después de crear `docs/PROJECT_HANDOFF.md` |
+| Estado observado del archivo handoff antes de su commit | `?? docs/PROJECT_HANDOFF.md` | `git status --short docs\PROJECT_HANDOFF.md` |
 | Tracking de `docs/PROJECT_HANDOFF.md` | Sin seguimiento en Git | `git ls-files docs\PROJECT_HANDOFF.md` sin salida |
 | Últimos commits inspeccionados | `f4b01ae Add Excel transformation execution configuration endpoints`; `eff87b5 Add advanced Excel transformation file inspection`; `e0b7d32 Add Excel transformation configuration contract`; `2eb22bc Add Excel export for reconciliation results`; `55d2377 Add manual review and execution approval flow` | `git log --oneline -5` |
 
