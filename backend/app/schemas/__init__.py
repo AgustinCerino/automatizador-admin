@@ -35,6 +35,10 @@ from app.schemas.transformacion_excel_inspeccion import (
     TransformacionExcelInspectionWarningRead,
     TransformacionExcelStructureRead,
 )
+from app.schemas.transformacion_excel_validacion import (
+    TransformacionExcelValidationIssueRead,
+    TransformacionExcelValidationRead,
+)
 from app.schemas.usuario import UsuarioRead
 
 __all__ = [
@@ -68,5 +72,7 @@ __all__ = [
     "TransformacionRowsConfig",
     "TransformacionSourceConfig",
     "TransformacionExcelStructureRead",
+    "TransformacionExcelValidationIssueRead",
+    "TransformacionExcelValidationRead",
     "UsuarioRead",
 ]

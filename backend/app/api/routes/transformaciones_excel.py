@@ -11,6 +11,9 @@ from app.schemas.transformacion_excel import (
 from app.schemas.transformacion_excel_inspeccion import (
     TransformacionExcelStructureRead,
 )
+from app.schemas.transformacion_excel_validacion import (
+    TransformacionExcelValidationRead,
+)
 from app.services.transformacion_excel_config_service import (
     TransformacionExcelConfigError,
     get_saved_transformacion_config,
@@ -19,6 +22,10 @@ from app.services.transformacion_excel_config_service import (
 from app.services.transformacion_excel_inspeccion_service import (
     TransformacionExcelInspeccionError,
     build_transformacion_excel_structure,
+)
+from app.services.transformacion_excel_validation_service import (
+    TransformacionExcelValidationTechnicalError,
+    validate_transformacion_execution,
 )
 
 
@@ -85,3 +92,29 @@ def read_configuracion_transformacion(
         return get_saved_transformacion_config(db, ejecucion_id, current_user)
     except TransformacionExcelConfigError as exc:
         raise_config_http_error(exc)
+
+
+@router.post(
+    "/{ejecucion_id}/validar",
+    response_model=TransformacionExcelValidationRead,
+)
+def validate_configured_transformacion(
+    ejecucion_id: int,
+    preview_limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+) -> dict:
+    try:
+        return validate_transformacion_execution(
+            db,
+            ejecucion_id,
+            current_user,
+            preview_limit,
+        )
+    except TransformacionExcelConfigError as exc:
+        raise_config_http_error(exc)
+    except TransformacionExcelValidationTechnicalError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="No se pudo validar la transformación.",
+        ) from exc
