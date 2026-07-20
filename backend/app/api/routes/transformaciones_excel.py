@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.routes.auth import get_current_user
@@ -11,6 +12,9 @@ from app.schemas.transformacion_excel import (
 from app.schemas.transformacion_excel_inspeccion import (
     TransformacionExcelStructureRead,
 )
+from app.schemas.transformacion_excel_generacion import (
+    TransformacionExcelGenerationRead,
+)
 from app.schemas.transformacion_excel_validacion import (
     TransformacionExcelValidationRead,
 )
@@ -22,6 +26,13 @@ from app.services.transformacion_excel_config_service import (
 from app.services.transformacion_excel_inspeccion_service import (
     TransformacionExcelInspeccionError,
     build_transformacion_excel_structure,
+)
+from app.services.transformacion_excel_generation_service import (
+    TransformacionExcelGenerationError,
+    TransformacionExcelGenerationTechnicalError,
+    generate_transformacion_result,
+    get_transformacion_result,
+    get_transformacion_result_download,
 )
 from app.services.transformacion_excel_validation_service import (
     TransformacionExcelValidationTechnicalError,
@@ -36,6 +47,12 @@ router = APIRouter(
 
 
 def raise_config_http_error(exc: TransformacionExcelConfigError) -> None:
+    raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+def raise_generation_http_error(
+    exc: TransformacionExcelGenerationError,
+) -> None:
     raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
@@ -118,3 +135,74 @@ def validate_configured_transformacion(
             status_code=500,
             detail="No se pudo validar la transformación.",
         ) from exc
+
+
+@router.post(
+    "/{ejecucion_id}/generar",
+    response_model=TransformacionExcelGenerationRead,
+)
+def generate_configured_transformacion(
+    ejecucion_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+) -> dict:
+    try:
+        return generate_transformacion_result(
+            db,
+            ejecucion_id,
+            current_user,
+        )
+    except TransformacionExcelConfigError as exc:
+        raise_config_http_error(exc)
+    except TransformacionExcelGenerationError as exc:
+        raise_generation_http_error(exc)
+    except TransformacionExcelGenerationTechnicalError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="No se pudo generar la transformación.",
+        ) from exc
+
+
+@router.get(
+    "/{ejecucion_id}/resultado",
+    response_model=TransformacionExcelGenerationRead,
+)
+def read_transformacion_result(
+    ejecucion_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+) -> dict:
+    try:
+        return get_transformacion_result(
+            db,
+            ejecucion_id,
+            current_user,
+        )
+    except TransformacionExcelConfigError as exc:
+        raise_config_http_error(exc)
+    except TransformacionExcelGenerationError as exc:
+        raise_generation_http_error(exc)
+
+
+@router.get("/{ejecucion_id}/resultado/descargar")
+def download_transformacion_result(
+    ejecucion_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+) -> FileResponse:
+    try:
+        download = get_transformacion_result_download(
+            db,
+            ejecucion_id,
+            current_user,
+        )
+    except TransformacionExcelConfigError as exc:
+        raise_config_http_error(exc)
+    except TransformacionExcelGenerationError as exc:
+        raise_generation_http_error(exc)
+
+    return FileResponse(
+        path=download.path,
+        filename=download.filename,
+        media_type=download.media_type,
+    )

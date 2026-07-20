@@ -35,6 +35,9 @@ from app.schemas.transformacion_excel_inspeccion import (
     TransformacionExcelInspectionWarningRead,
     TransformacionExcelStructureRead,
 )
+from app.schemas.transformacion_excel_generacion import (
+    TransformacionExcelGenerationRead,
+)
 from app.schemas.transformacion_excel_validacion import (
     TransformacionExcelValidationIssueRead,
     TransformacionExcelValidationRead,
@@ -71,6 +74,7 @@ __all__ = [
     "TransformacionOutputConfig",
     "TransformacionRowsConfig",
     "TransformacionSourceConfig",
+    "TransformacionExcelGenerationRead",
     "TransformacionExcelStructureRead",
     "TransformacionExcelValidationIssueRead",
     "TransformacionExcelValidationRead",
