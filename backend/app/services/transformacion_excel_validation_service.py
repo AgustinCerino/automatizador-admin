@@ -1,6 +1,8 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from typing import Any
 
+import pandas as pd
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -18,9 +20,18 @@ from app.services.transformacion_excel_config_service import (
 )
 from app.services.transformacion_excel_inspeccion_service import (
     TransformacionExcelInspeccionError,
+    get_available_sheets,
+    get_raw_headers,
+    normalize_column_name,
+    normalize_extension,
+    read_source_dataframe,
+    resolve_existing_storage_path,
+    select_sheet_name,
+    validate_headers,
 )
 from app.services.transformacion_excel_pipeline import (
-    read_configured_source_dataframe,
+    TransformacionPipelineIssue,
+    TransformacionPipelineResult,
     run_transformacion_pipeline,
 )
 
@@ -30,6 +41,124 @@ TECHNICAL_ERROR_MESSAGE = "Error técnico al validar la transformación."
 
 class TransformacionExcelValidationTechnicalError(Exception):
     pass
+
+
+def serialize_json_value(value: Any) -> Any:
+    if value is None:
+        return None
+    try:
+        if bool(pd.isna(value)):
+            return None
+    except (TypeError, ValueError):
+        pass
+
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, (datetime, date, pd.Timestamp)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {
+            str(key): serialize_json_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [serialize_json_value(item) for item in value]
+    if hasattr(value, "item"):
+        return serialize_json_value(value.item())
+    return value
+
+
+def read_configured_source_dataframe(
+    archivo: Archivo,
+    config: TransformacionExcelConfig,
+) -> pd.DataFrame:
+    extension = normalize_extension(archivo.extension)
+    path = resolve_existing_storage_path(archivo)
+    available_sheets = get_available_sheets(path, extension)
+    selected_sheet_name = select_sheet_name(
+        extension,
+        available_sheets,
+        config.source.sheet_name,
+    )
+    raw_headers = get_raw_headers(
+        path,
+        extension,
+        selected_sheet_name,
+        config.source.header_row,
+    )
+    dataframe = read_source_dataframe(
+        path,
+        extension,
+        selected_sheet_name,
+        config.source.header_row,
+    )
+
+    if len(raw_headers) == len(dataframe.columns):
+        dataframe.columns = raw_headers
+
+    column_names = [
+        normalize_column_name(column)
+        for column in dataframe.columns
+    ]
+    validate_headers(column_names)
+    dataframe.columns = column_names
+    return dataframe.reset_index(drop=True)
+
+
+def issue_to_dict(
+    issue: TransformacionPipelineIssue,
+) -> dict[str, Any]:
+    return {
+        "code": issue.code,
+        "message": issue.message,
+        "output_column": issue.output_column,
+        "source_column": issue.source_column,
+        "count": issue.count,
+        "sample_rows": [
+            {
+                str(key): serialize_json_value(value)
+                for key, value in sample.items()
+            }
+            for sample in issue.samples
+        ],
+    }
+
+
+def build_preview_rows(
+    result: TransformacionPipelineResult,
+    preview_limit: int,
+) -> list[dict[str, object]]:
+    return [
+        {
+            column: serialize_json_value(row[column])
+            for column in result.output_columns
+        }
+        for _, row in result.final_dataframe.head(preview_limit).iterrows()
+    ]
+
+
+def build_pipeline_response(
+    result: TransformacionPipelineResult,
+    preview_limit: int,
+) -> dict[str, Any]:
+    metrics = result.metrics
+    return {
+        "valid": result.valid,
+        "total_filas_entrada": metrics.total_filas_entrada,
+        "filas_despues_filtros": metrics.filas_despues_filtros,
+        "filas_excluidas_por_filtros": (
+            metrics.filas_excluidas_por_filtros
+        ),
+        "filas_validas": metrics.filas_validas,
+        "filas_con_errores": metrics.filas_con_errores,
+        "filas_con_advertencias": metrics.filas_con_advertencias,
+        "duplicados_detectados": metrics.duplicados_detectados,
+        "duplicados_eliminados": metrics.duplicados_eliminados,
+        "columnas_salida": result.output_columns,
+        "preview_rows": build_preview_rows(result, preview_limit),
+        "errors": [issue_to_dict(issue) for issue in result.errors],
+        "warnings": [issue_to_dict(issue) for issue in result.warnings],
+    }
 
 
 def get_persisted_config(
@@ -62,7 +191,7 @@ def run_dry_run(
     try:
         source_dataframe = read_configured_source_dataframe(
             archivo,
-            config.source,
+            config,
         )
     except TransformacionExcelInspeccionError as exc:
         raise TransformacionExcelConfigError(
@@ -74,11 +203,11 @@ def run_dry_run(
         collect_referenced_source_columns(config),
         [str(column) for column in source_dataframe.columns],
     )
-    return run_transformacion_pipeline(
+    result = run_transformacion_pipeline(
         source_dataframe,
         config,
-        preview_limit,
     )
+    return build_pipeline_response(result, preview_limit)
 
 
 def build_persisted_validation(

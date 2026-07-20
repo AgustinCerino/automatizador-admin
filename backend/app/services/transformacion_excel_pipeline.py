@@ -9,31 +9,19 @@ from typing import Any, Literal
 
 import pandas as pd
 
-from app.models import Archivo
 from app.schemas.transformacion_excel import (
     ArithmeticColumnTransform,
     OutputColumnTransform,
     SourceColumnTransform,
     TransformacionExcelConfig,
     TransformacionFilterRule,
-    TransformacionSourceConfig,
     ValueMapColumnTransform,
-)
-from app.services.transformacion_excel_inspeccion_service import (
-    get_available_sheets,
-    get_raw_headers,
-    normalize_column_name,
-    normalize_extension,
-    read_source_dataframe,
-    resolve_existing_storage_path,
-    select_sheet_name,
-    validate_headers,
 )
 
 
 SOURCE_ROW_NUMBER = "__source_row_number__"
 MAX_ISSUE_SAMPLES = 10
-IssueSeverity = Literal["error", "warning"]
+IssueSeverity = Literal["ERROR", "WARNING"]
 
 ISSUE_MESSAGES = {
     "INVALID_FILTER_VALUE": (
@@ -56,26 +44,35 @@ ISSUE_MESSAGES = {
     "DUPLICATES_REMOVED": (
         "La fila sería eliminada por la configuración de duplicados."
     ),
-    "ROWS_FILTERED_OUT": "La fila fue excluida por los filtros configurados.",
+    "ROWS_FILTERED_OUT": "Hay filas excluidas por los filtros configurados.",
 }
 
 _VALUE_NOT_PROVIDED = object()
 
 
 @dataclass
-class _IssueGroup:
+class TransformacionPipelineIssue:
     code: str
     message: str
     output_column: str | None
     source_column: str | None
-    row_numbers: set[int] = field(default_factory=set)
+    severity: IssueSeverity
+    source_row_numbers: set[int] = field(default_factory=set)
     samples: list[dict[str, object]] = field(default_factory=list)
 
-    def add(self, source_row_number: int, value: Any) -> None:
-        if source_row_number in self.row_numbers:
+    @property
+    def count(self) -> int:
+        return len(self.source_row_numbers)
+
+    def add_row(
+        self,
+        source_row_number: int,
+        value: Any = _VALUE_NOT_PROVIDED,
+    ) -> None:
+        if source_row_number in self.source_row_numbers:
             return
 
-        self.row_numbers.add(source_row_number)
+        self.source_row_numbers.add(source_row_number)
         if len(self.samples) >= MAX_ISSUE_SAMPLES:
             return
 
@@ -83,25 +80,54 @@ class _IssueGroup:
             "source_row_number": source_row_number,
         }
         if value is not _VALUE_NOT_PROVIDED:
-            sample["value"] = serialize_json_value(value)
+            sample["value"] = value
         self.samples.append(sample)
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "code": self.code,
-            "message": self.message,
-            "output_column": self.output_column,
-            "source_column": self.source_column,
-            "count": len(self.row_numbers),
-            "sample_rows": self.samples,
-        }
+
+@dataclass(frozen=True)
+class TransformacionPipelineMetrics:
+    total_filas_entrada: int
+    filas_despues_filtros: int
+    filas_excluidas_por_filtros: int
+    filas_con_errores: int
+    filas_con_advertencias: int
+    filas_validas: int
+    duplicados_detectados: int
+    duplicados_eliminados: int
 
 
-class ValidationIssueCollector:
+@dataclass
+class TransformacionPipelineResult:
+    valid: bool
+    final_dataframe: pd.DataFrame
+    metrics: TransformacionPipelineMetrics
+    errors: list[TransformacionPipelineIssue]
+    warnings: list[TransformacionPipelineIssue]
+    output_columns: list[str]
+
+    def raise_if_invalid(self) -> None:
+        if not self.valid:
+            raise TransformacionPipelineInvalidResultError(self)
+
+
+class TransformacionPipelineInvalidResultError(Exception):
+    def __init__(self, result: TransformacionPipelineResult) -> None:
+        self.result = result
+        super().__init__("La transformación contiene errores de validación.")
+
+
+@dataclass
+class _OperationResult:
+    value: Any
+    source_column: str | None = None
+    failed: bool = False
+
+
+class _ValidationIssueCollector:
     def __init__(self) -> None:
-        self._groups: dict[
+        self._issues: dict[
             tuple[IssueSeverity, str, str | None, str | None],
-            _IssueGroup,
+            TransformacionPipelineIssue,
         ] = {}
         self.error_rows: set[int] = set()
         self.warning_rows: set[int] = set()
@@ -117,273 +143,266 @@ class ValidationIssueCollector:
         value: Any = _VALUE_NOT_PROVIDED,
     ) -> None:
         key = (severity, code, output_column, source_column)
-        group = self._groups.setdefault(
+        issue = self._issues.setdefault(
             key,
-            _IssueGroup(
+            TransformacionPipelineIssue(
                 code=code,
                 message=ISSUE_MESSAGES[code],
                 output_column=output_column,
                 source_column=source_column,
+                severity=severity,
             ),
         )
-        group.add(source_row_number, value)
+        issue.add_row(source_row_number, value)
 
-        if severity == "error":
+        if severity == "ERROR":
             self.error_rows.add(source_row_number)
         else:
             self.warning_rows.add(source_row_number)
 
-    def build(self, severity: IssueSeverity) -> list[dict[str, Any]]:
+    def by_severity(
+        self,
+        severity: IssueSeverity,
+    ) -> list[TransformacionPipelineIssue]:
         return [
-            group.to_dict()
-            for key, group in self._groups.items()
-            if key[0] == severity
+            issue
+            for issue in self._issues.values()
+            if issue.severity == severity
         ]
 
 
-def is_missing(value: Any) -> bool:
+def _is_missing(value: Any) -> bool:
     if value is None:
         return True
     try:
-        missing = pd.isna(value)
+        return bool(pd.isna(value))
     except (TypeError, ValueError):
         return False
-    return bool(missing) if isinstance(missing, bool) else False
 
 
-def normalize_text(value: Any) -> str | None:
-    if is_missing(value):
+def _normalize_empty_value(value: Any) -> Any:
+    if _is_missing(value):
         return None
-    normalized = str(value).strip()
-    return normalized or None
+    if isinstance(value, str):
+        normalized = value.strip()
+        return normalized or None
+    return value
 
 
-def normalize_comparison_text(value: Any) -> str:
-    normalized = normalize_text(value)
+def _convert_to_text(value: Any) -> str | None:
+    normalized = _normalize_empty_value(value)
+    if normalized is None:
+        return None
+    return str(normalized).strip() or None
+
+
+def _normalize_comparison_text(value: Any) -> str:
+    normalized = _convert_to_text(value)
     return "" if normalized is None else normalized.casefold()
 
 
-def parse_decimal(value: Any) -> Decimal | None:
-    if is_missing(value) or isinstance(value, bool):
+def _strip_numeric_sign(text: str) -> tuple[str, str]:
+    if text.startswith(("+", "-")):
+        return text[0], text[1:]
+    return "", text
+
+
+def _valid_grouped_integer(value: str, separator: str) -> bool:
+    groups = value.split(separator)
+    return (
+        len(groups) > 1
+        and 1 <= len(groups[0]) <= 3
+        and groups[0].isdigit()
+        and all(len(group) == 3 and group.isdigit() for group in groups[1:])
+    )
+
+
+def _normalize_decimal_text(value: str) -> str | None:
+    text = value.strip()
+    if not text or re.search(r"\s", text):
         return None
 
-    if isinstance(value, Decimal):
-        return value if value.is_finite() else None
+    sign, unsigned = _strip_numeric_sign(text)
+    if not unsigned:
+        return None
 
-    if isinstance(value, int):
-        return Decimal(value)
-
-    if isinstance(value, float):
-        if not math.isfinite(value):
+    comma_count = unsigned.count(",")
+    dot_count = unsigned.count(".")
+    if comma_count and dot_count:
+        decimal_separator = (
+            "," if unsigned.rfind(",") > unsigned.rfind(".") else "."
+        )
+        thousands_separator = "." if decimal_separator == "," else ","
+        if unsigned.count(decimal_separator) != 1:
             return None
-        return Decimal(str(value))
+        integer_part, decimal_part = unsigned.rsplit(decimal_separator, 1)
+        if (
+            not decimal_part.isdigit()
+            or not _valid_grouped_integer(
+                integer_part,
+                thousands_separator,
+            )
+        ):
+            return None
+        integer_digits = integer_part.replace(thousands_separator, "")
+        return f"{sign}{integer_digits}.{decimal_part}"
 
-    text = str(value).strip().replace(" ", "")
-    if not text:
+    separator = "," if comma_count else "." if dot_count else None
+    if separator is None:
+        return f"{sign}{unsigned}" if unsigned.isdigit() else None
+
+    separator_count = unsigned.count(separator)
+    if separator_count > 1:
+        if not _valid_grouped_integer(unsigned, separator):
+            return None
+        return f"{sign}{unsigned.replace(separator, '')}"
+
+    integer_part, decimal_part = unsigned.split(separator)
+    if not integer_part.isdigit() or not decimal_part.isdigit():
         return None
 
-    if "," in text and "." in text:
+    if 1 <= len(integer_part) <= 3 and len(decimal_part) == 3:
         return None
-    if text.count(",") > 1 or text.count(".") > 1:
-        return None
-    if "," in text:
-        text = text.replace(",", ".")
+    return f"{sign}{integer_part}.{decimal_part}"
 
+
+def _convert_to_decimal(value: Any) -> Decimal | None:
+    normalized = _normalize_empty_value(value)
+    if normalized is None or isinstance(normalized, bool):
+        return None
+
+    if isinstance(normalized, Decimal):
+        return normalized if normalized.is_finite() else None
+    if isinstance(normalized, int):
+        return Decimal(normalized)
+    if isinstance(normalized, float):
+        if not math.isfinite(normalized):
+            return None
+        return Decimal(str(normalized))
+
+    normalized_text = _normalize_decimal_text(str(normalized))
+    if normalized_text is None:
+        return None
     try:
-        parsed = Decimal(text)
+        parsed = Decimal(normalized_text)
     except (InvalidOperation, ValueError):
         return None
     return parsed if parsed.is_finite() else None
 
 
-def parse_date(value: Any, date_format: str | None) -> date | None:
-    if is_missing(value) or isinstance(value, (bool, int, float, Decimal)):
+def _convert_to_integer(value: Any) -> int | None:
+    parsed = _convert_to_decimal(value)
+    if parsed is None or parsed != parsed.to_integral_value():
+        return None
+    return int(parsed)
+
+
+def _convert_to_date(value: Any) -> date | None:
+    normalized = _normalize_empty_value(value)
+    if normalized is None or isinstance(
+        normalized,
+        (bool, int, float, Decimal),
+    ):
         return None
 
-    if isinstance(value, pd.Timestamp):
-        return value.date()
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
+    if isinstance(normalized, pd.Timestamp):
+        return normalized.date()
+    if isinstance(normalized, datetime):
+        return normalized.date()
+    if isinstance(normalized, date):
+        return normalized
 
-    text = str(value).strip()
-    if not text:
-        return None
+    text = str(normalized)
     if re.fullmatch(r"[-+]?\d+(?:[.,]\d+)?", text):
         return None
 
-    formats = [
-        date_format,
+    for date_format in (
         "%Y-%m-%d",
-        "%Y/%m/%d",
+        "%Y-%m-%d %H:%M:%S",
         "%d/%m/%Y",
         "%d-%m-%Y",
-        "%Y-%m-%d %H:%M:%S",
         "%d/%m/%Y %H:%M:%S",
-    ]
-    for candidate_format in formats:
-        if not candidate_format:
-            continue
+    ):
         try:
-            return datetime.strptime(text, candidate_format).date()
+            return datetime.strptime(text, date_format).date()
         except ValueError:
             continue
-
-    try:
-        return datetime.fromisoformat(text).date()
-    except ValueError:
-        return None
+    return None
 
 
-def convert_output_value(
+def _convert_output_value(
     value: Any,
     output_type: str,
-    date_format: str | None = None,
+    decimal_places: int | None = None,
 ) -> tuple[Any, str | None]:
-    if is_missing(value):
+    normalized = _normalize_empty_value(value)
+    if normalized is None:
         return None, None
 
     if output_type == "text":
-        return normalize_text(value), None
-
+        return _convert_to_text(normalized), None
     if output_type == "decimal":
-        parsed_decimal = parse_decimal(value)
+        parsed_decimal = _convert_to_decimal(normalized)
         if parsed_decimal is None:
             return None, "INVALID_DECIMAL"
+        if decimal_places is not None:
+            quantum = Decimal(1).scaleb(-decimal_places)
+            parsed_decimal = parsed_decimal.quantize(
+                quantum,
+                rounding=ROUND_HALF_UP,
+            )
         return parsed_decimal, None
-
     if output_type == "integer":
-        parsed_integer = parse_decimal(value)
-        if (
-            parsed_integer is None
-            or parsed_integer != parsed_integer.to_integral_value()
-        ):
+        parsed_integer = _convert_to_integer(normalized)
+        if parsed_integer is None:
             return None, "INVALID_INTEGER"
-        return int(parsed_integer), None
-
+        return parsed_integer, None
     if output_type == "date":
-        parsed_date = parse_date(value, date_format)
+        parsed_date = _convert_to_date(normalized)
         if parsed_date is None:
             return None, "INVALID_DATE"
         return parsed_date, None
-
     raise ValueError(f"Tipo de salida no soportado: {output_type}")
 
 
-def apply_configured_decimal_places(
-    value: Any,
-    transform: OutputColumnTransform,
-) -> Any:
-    decimal_places = getattr(transform, "decimal_places", None)
-    if (
-        isinstance(value, Decimal)
-        and transform.output_type == "decimal"
-        and decimal_places is not None
-    ):
-        quantum = Decimal(1).scaleb(-decimal_places)
-        return value.quantize(quantum, rounding=ROUND_HALF_UP)
-    return value
-
-
-def serialize_json_value(value: Any) -> Any:
-    if is_missing(value):
-        return None
-    if isinstance(value, Decimal):
-        return float(value)
-    if isinstance(value, (datetime, date, pd.Timestamp)):
-        return value.isoformat()
-    if isinstance(value, dict):
-        return {
-            str(key): serialize_json_value(item)
-            for key, item in value.items()
-        }
-    if isinstance(value, (list, tuple)):
-        return [serialize_json_value(item) for item in value]
-    if hasattr(value, "item"):
-        return serialize_json_value(value.item())
-    return value
-
-
-def read_configured_source_dataframe(
-    archivo: Archivo,
-    source: TransformacionSourceConfig,
-) -> pd.DataFrame:
-    extension = normalize_extension(archivo.extension)
-    path = resolve_existing_storage_path(archivo)
-    available_sheets = get_available_sheets(path, extension)
-    selected_sheet_name = select_sheet_name(
-        extension,
-        available_sheets,
-        source.sheet_name,
-    )
-    raw_headers = get_raw_headers(
-        path,
-        extension,
-        selected_sheet_name,
-        source.header_row,
-    )
-    dataframe = read_source_dataframe(
-        path,
-        extension,
-        selected_sheet_name,
-        source.header_row,
-    )
-
-    if len(raw_headers) == len(dataframe.columns):
-        dataframe.columns = raw_headers
-
-    column_names = [
-        normalize_column_name(column)
-        for column in dataframe.columns
-    ]
-    validate_headers(column_names)
-    dataframe.columns = column_names
-    return dataframe.reset_index(drop=True)
-
-
-def evaluate_filter(
+def _evaluate_filter(
     value: Any,
     rule: TransformacionFilterRule,
 ) -> tuple[bool, bool]:
     if rule.operator == "NOT_EMPTY":
-        return not is_missing_or_empty(value), False
+        return _normalize_empty_value(value) is not None, False
     if rule.operator == "IS_EMPTY":
-        return is_missing_or_empty(value), False
+        return _normalize_empty_value(value) is None, False
     if rule.operator == "EQUALS":
         return (
-            normalize_comparison_text(value)
-            == normalize_comparison_text(rule.value)
+            _normalize_comparison_text(value)
+            == _normalize_comparison_text(rule.value)
         ), False
     if rule.operator == "IN":
         allowed_values = {
-            normalize_comparison_text(item)
+            _normalize_comparison_text(item)
             for item in (rule.values or [])
         }
-        return normalize_comparison_text(value) in allowed_values, False
+        return _normalize_comparison_text(value) in allowed_values, False
     if rule.operator == "CONTAINS":
-        expected = normalize_comparison_text(rule.value)
-        return expected in normalize_comparison_text(value), False
+        expected = _normalize_comparison_text(rule.value)
+        return expected in _normalize_comparison_text(value), False
     if rule.operator in {"GREATER_THAN", "LESS_THAN"}:
-        current_number = parse_decimal(value)
-        expected_number = parse_decimal(rule.value)
+        current_number = _convert_to_decimal(value)
+        expected_number = _convert_to_decimal(rule.value)
         if current_number is None or expected_number is None:
             return False, True
         if rule.operator == "GREATER_THAN":
             return current_number > expected_number, False
         return current_number < expected_number, False
-
     raise ValueError(f"Operador de filtro no soportado: {rule.operator}")
 
 
-def is_missing_or_empty(value: Any) -> bool:
-    return normalize_text(value) is None
-
-
-def apply_filters(
+def _apply_filters(
     dataframe: pd.DataFrame,
     config: TransformacionExcelConfig,
-    collector: ValidationIssueCollector,
+    collector: _ValidationIssueCollector,
+    row_number_column: str,
 ) -> pd.DataFrame:
     if not config.rows.filters:
         return dataframe.copy()
@@ -393,39 +412,42 @@ def apply_filters(
 
     for rule in config.rows.filters:
         for index, value in dataframe[rule.source_column].items():
-            matches, has_error = evaluate_filter(value, rule)
-            source_row_number = int(dataframe.at[index, SOURCE_ROW_NUMBER])
+            matches, has_error = _evaluate_filter(value, rule)
+            source_row_number = int(dataframe.at[index, row_number_column])
             if has_error:
                 filter_error_indices.add(index)
                 collector.add(
-                    "error",
+                    "ERROR",
                     "INVALID_FILTER_VALUE",
                     source_row_number,
                     source_column=rule.source_column,
                     value=value,
                 )
                 passed_by_index[index] = False
-                continue
-            passed_by_index[index] = passed_by_index[index] and matches
+            else:
+                passed_by_index[index] = (
+                    passed_by_index[index] and matches
+                )
 
     passed_indices = [
         index
         for index in dataframe.index
         if passed_by_index[index] and index not in filter_error_indices
     ]
+    passed_index_set = set(passed_indices)
     for index in dataframe.index:
-        if index in passed_indices or index in filter_error_indices:
+        if index in passed_index_set or index in filter_error_indices:
             continue
         collector.add(
-            "warning",
+            "WARNING",
             "ROWS_FILTERED_OUT",
-            int(dataframe.at[index, SOURCE_ROW_NUMBER]),
+            int(dataframe.at[index, row_number_column]),
         )
 
     return dataframe.loc[passed_indices].copy()
 
 
-def source_column_for_transform(
+def _source_column_for_transform(
     transform: OutputColumnTransform,
 ) -> str | None:
     if isinstance(transform, (SourceColumnTransform, ValueMapColumnTransform)):
@@ -433,38 +455,34 @@ def source_column_for_transform(
     return None
 
 
-def add_conversion_or_required_issue(
-    collector: ValidationIssueCollector,
-    transform: OutputColumnTransform,
-    source_row_number: int,
-    raw_value: Any,
-    converted_value: Any,
-    conversion_error: str | None,
-) -> None:
-    source_column = source_column_for_transform(transform)
-    if conversion_error is not None:
-        collector.add(
-            "error",
-            conversion_error,
-            source_row_number,
-            output_column=transform.output_column,
-            source_column=source_column,
-            value=raw_value,
-        )
-        return
-
-    if transform.required and is_missing_or_empty(converted_value):
-        collector.add(
-            "error",
-            "REQUIRED_VALUE_MISSING",
-            source_row_number,
-            output_column=transform.output_column,
-            source_column=source_column,
-            value=raw_value,
-        )
+def _apply_source_operation(
+    row: pd.Series,
+    transform: Any,
+) -> _OperationResult:
+    return _OperationResult(
+        value=row[transform.source_column],
+        source_column=transform.source_column,
+    )
 
 
-def resolve_arithmetic_operand(
+def _apply_constant_operation(transform: Any) -> _OperationResult:
+    return _OperationResult(value=transform.value)
+
+
+def _apply_concat_operation(
+    row: pd.Series,
+    transform: Any,
+) -> _OperationResult:
+    parts: list[str] = []
+    for part in transform.parts:
+        if part.type == "LITERAL":
+            parts.append(part.value)
+        else:
+            parts.append(_convert_to_text(row[part.value]) or "")
+    return _OperationResult(value="".join(parts))
+
+
+def _resolve_arithmetic_operand(
     row: pd.Series,
     operand: Any,
 ) -> tuple[Decimal | None, Any, str | None]:
@@ -473,31 +491,33 @@ def resolve_arithmetic_operand(
         if operand.type == "SOURCE"
         else operand.value
     )
-    return parse_decimal(raw_value), raw_value, (
-        operand.value if operand.type == "SOURCE" else None
+    return (
+        _convert_to_decimal(raw_value),
+        raw_value,
+        operand.value if operand.type == "SOURCE" else None,
     )
 
 
-def apply_arithmetic_transform(
+def _apply_arithmetic_operation(
     row: pd.Series,
     transform: ArithmeticColumnTransform,
     source_row_number: int,
-    collector: ValidationIssueCollector,
-) -> Any:
-    left, raw_left, left_source = resolve_arithmetic_operand(
+    collector: _ValidationIssueCollector,
+) -> _OperationResult:
+    left, raw_left, left_source = _resolve_arithmetic_operand(
         row,
         transform.left_operand,
     )
-    right, raw_right, right_source = resolve_arithmetic_operand(
+    right, raw_right, right_source = _resolve_arithmetic_operand(
         row,
         transform.right_operand,
     )
 
-    invalid_operand = False
+    failed = False
     if left is None:
-        invalid_operand = True
+        failed = True
         collector.add(
-            "error",
+            "ERROR",
             "INVALID_NUMERIC_OPERAND",
             source_row_number,
             output_column=transform.output_column,
@@ -505,17 +525,17 @@ def apply_arithmetic_transform(
             value=raw_left,
         )
     if right is None:
-        invalid_operand = True
+        failed = True
         collector.add(
-            "error",
+            "ERROR",
             "INVALID_NUMERIC_OPERAND",
             source_row_number,
             output_column=transform.output_column,
             source_column=right_source,
             value=raw_right,
         )
-    if invalid_operand or left is None or right is None:
-        return None
+    if failed or left is None or right is None:
+        return _OperationResult(value=None, failed=True)
 
     if transform.operator == "ADD":
         result = left + right
@@ -526,91 +546,128 @@ def apply_arithmetic_transform(
     elif transform.operator == "DIVIDE":
         if right == 0:
             collector.add(
-                "error",
+                "ERROR",
                 "DIVISION_BY_ZERO",
                 source_row_number,
                 output_column=transform.output_column,
                 source_column=right_source,
                 value=raw_right,
             )
-            return None
+            return _OperationResult(value=None, failed=True)
         result = left / right
     else:
         raise ValueError(
             f"Operador aritmético no soportado: {transform.operator}",
         )
 
-    if transform.output_type == "integer":
-        if result != result.to_integral_value():
-            collector.add(
-                "error",
-                "INVALID_INTEGER_RESULT",
-                source_row_number,
-                output_column=transform.output_column,
-                value=result,
-            )
-            return None
-        return int(result)
+    if (
+        transform.output_type == "integer"
+        and result != result.to_integral_value()
+    ):
+        collector.add(
+            "ERROR",
+            "INVALID_INTEGER_RESULT",
+            source_row_number,
+            output_column=transform.output_column,
+            value=result,
+        )
+        return _OperationResult(value=None, failed=True)
+    return _OperationResult(value=result)
 
-    quantum = Decimal(1).scaleb(-transform.decimal_places)
-    return result.quantize(quantum, rounding=ROUND_HALF_UP)
 
-
-def apply_value_map_transform(
+def _apply_value_map_operation(
     row: pd.Series,
     transform: ValueMapColumnTransform,
     source_row_number: int,
-    collector: ValidationIssueCollector,
-) -> tuple[Any, bool]:
+    collector: _ValidationIssueCollector,
+) -> _OperationResult:
     original_value = row[transform.source_column]
     normalized_mapping: dict[str, Any] = {}
     for key, mapped_value in transform.mapping.items():
         normalized_mapping.setdefault(
-            normalize_comparison_text(key),
+            _normalize_comparison_text(key),
             mapped_value,
         )
 
-    normalized_value = normalize_comparison_text(original_value)
+    normalized_value = _normalize_comparison_text(original_value)
     if normalized_value in normalized_mapping:
-        return normalized_mapping[normalized_value], False
+        return _OperationResult(
+            value=normalized_mapping[normalized_value],
+            source_column=transform.source_column,
+        )
 
     if transform.unmapped_policy == "ERROR":
         collector.add(
-            "error",
+            "ERROR",
             "UNMAPPED_VALUE",
             source_row_number,
             output_column=transform.output_column,
             source_column=transform.source_column,
             value=original_value,
         )
-        return None, True
-
-    if transform.unmapped_policy == "KEEP_ORIGINAL":
-        collector.add(
-            "warning",
-            "UNMAPPED_VALUE_KEPT",
-            source_row_number,
-            output_column=transform.output_column,
+        return _OperationResult(
+            value=None,
             source_column=transform.source_column,
-            value=original_value,
+            failed=True,
         )
-        return original_value, False
 
+    warning_code = (
+        "UNMAPPED_VALUE_KEPT"
+        if transform.unmapped_policy == "KEEP_ORIGINAL"
+        else "UNMAPPED_VALUE_DEFAULTED"
+    )
     collector.add(
-        "warning",
-        "UNMAPPED_VALUE_DEFAULTED",
+        "WARNING",
+        warning_code,
         source_row_number,
         output_column=transform.output_column,
         source_column=transform.source_column,
         value=original_value,
     )
-    return transform.default_value, False
+    return _OperationResult(
+        value=(
+            original_value
+            if transform.unmapped_policy == "KEEP_ORIGINAL"
+            else transform.default_value
+        ),
+        source_column=transform.source_column,
+    )
 
 
-def build_output_dataframe(
+def _dispatch_operation(
+    row: pd.Series,
+    transform: OutputColumnTransform,
+    source_row_number: int,
+    collector: _ValidationIssueCollector,
+) -> _OperationResult:
+    if transform.operation == "SOURCE":
+        return _apply_source_operation(row, transform)
+    if transform.operation == "CONSTANT":
+        return _apply_constant_operation(transform)
+    if transform.operation == "CONCAT":
+        return _apply_concat_operation(row, transform)
+    if transform.operation == "ARITHMETIC":
+        return _apply_arithmetic_operation(
+            row,
+            transform,
+            source_row_number,
+            collector,
+        )
+    if transform.operation == "VALUE_MAP":
+        return _apply_value_map_operation(
+            row,
+            transform,
+            source_row_number,
+            collector,
+        )
+    raise ValueError(f"Operación no soportada: {transform.operation}")
+
+
+def _apply_output_columns(
     dataframe: pd.DataFrame,
     config: TransformacionExcelConfig,
-    collector: ValidationIssueCollector,
+    collector: _ValidationIssueCollector,
+    row_number_column: str,
 ) -> tuple[pd.DataFrame, list[str]]:
     ordered_transforms = sorted(
         config.output_columns,
@@ -627,73 +684,57 @@ def build_output_dataframe(
     )
 
     for index, row in dataframe.iterrows():
-        source_row_number = int(row[SOURCE_ROW_NUMBER])
-
+        source_row_number = int(row[row_number_column])
         for transform in ordered_transforms:
-            operation_failed = False
-            date_format = getattr(transform, "date_format", None)
-
-            if transform.operation == "SOURCE":
-                raw_value = row[transform.source_column]
-            elif transform.operation == "CONSTANT":
-                raw_value = transform.value
-            elif transform.operation == "CONCAT":
-                parts: list[str] = []
-                for part in transform.parts:
-                    if part.type == "LITERAL":
-                        parts.append(part.value)
-                    else:
-                        source_text = normalize_text(row[part.value])
-                        parts.append(source_text or "")
-                raw_value = "".join(parts)
-            elif transform.operation == "ARITHMETIC":
-                raw_value = apply_arithmetic_transform(
-                    row,
-                    transform,
-                    source_row_number,
-                    collector,
-                )
-                operation_failed = raw_value is None
-            elif transform.operation == "VALUE_MAP":
-                raw_value, operation_failed = apply_value_map_transform(
-                    row,
-                    transform,
-                    source_row_number,
-                    collector,
-                )
-            else:
-                raise ValueError(
-                    f"Operación no soportada: {transform.operation}",
-                )
-
-            if operation_failed:
+            operation_result = _dispatch_operation(
+                row,
+                transform,
+                source_row_number,
+                collector,
+            )
+            if operation_result.failed:
                 output_dataframe.at[index, transform.output_column] = None
                 continue
 
-            converted_value, conversion_error = convert_output_value(
-                raw_value,
+            converted_value, conversion_error = _convert_output_value(
+                operation_result.value,
                 transform.output_type,
-                date_format,
+                getattr(transform, "decimal_places", None),
             )
-            if conversion_error is None:
-                converted_value = apply_configured_decimal_places(
-                    converted_value,
-                    transform,
-                )
             output_dataframe.at[index, transform.output_column] = converted_value
-            add_conversion_or_required_issue(
-                collector,
-                transform,
-                source_row_number,
-                raw_value,
-                converted_value,
-                conversion_error,
+            source_column = (
+                operation_result.source_column
+                or _source_column_for_transform(transform)
             )
+
+            if conversion_error is not None:
+                collector.add(
+                    "ERROR",
+                    conversion_error,
+                    source_row_number,
+                    output_column=transform.output_column,
+                    source_column=source_column,
+                    value=operation_result.value,
+                )
+                continue
+
+            if (
+                transform.required
+                and _normalize_empty_value(converted_value) is None
+            ):
+                collector.add(
+                    "ERROR",
+                    "REQUIRED_VALUE_MISSING",
+                    source_row_number,
+                    output_column=transform.output_column,
+                    source_column=source_column,
+                    value=operation_result.value,
+                )
 
     return output_dataframe, output_columns
 
 
-def resolve_output_columns(
+def _resolve_output_columns(
     configured_columns: list[str],
     output_columns: list[str],
 ) -> list[str]:
@@ -707,33 +748,30 @@ def resolve_output_columns(
     ]
 
 
-def apply_deduplication(
+def _apply_deduplication(
     dataframe: pd.DataFrame,
     source_rows: pd.Series,
     config: TransformacionExcelConfig,
     output_columns: list[str],
-    collector: ValidationIssueCollector,
+    collector: _ValidationIssueCollector,
 ) -> tuple[pd.DataFrame, pd.Series, int, int]:
     duplicate_config = config.rows.remove_duplicates
     if not duplicate_config.enabled or dataframe.empty:
         return dataframe, source_rows, 0, 0
 
-    duplicate_columns = resolve_output_columns(
+    duplicate_columns = _resolve_output_columns(
         duplicate_config.by_output_columns,
         output_columns,
-    )
-    duplicate_mask = dataframe.duplicated(
-        subset=duplicate_columns,
-        keep=False,
     )
     removed_mask = dataframe.duplicated(
         subset=duplicate_columns,
         keep="first",
     )
+    duplicates_detected = int(removed_mask.sum())
 
     for index in dataframe.index[removed_mask]:
         collector.add(
-            "warning",
+            "WARNING",
             "DUPLICATES_REMOVED",
             int(source_rows.at[index]),
         )
@@ -742,12 +780,12 @@ def apply_deduplication(
     return (
         dataframe.loc[kept_indices].copy(),
         source_rows.loc[kept_indices].copy(),
-        int(duplicate_mask.sum()),
-        int(removed_mask.sum()),
+        duplicates_detected,
+        duplicates_detected,
     )
 
 
-def apply_sorting(
+def _apply_sorting(
     dataframe: pd.DataFrame,
     config: TransformacionExcelConfig,
     output_columns: list[str],
@@ -755,67 +793,68 @@ def apply_sorting(
     if not config.rows.sort_by or dataframe.empty:
         return dataframe
 
-    sort_columns = resolve_output_columns(
-        [rule.output_column for rule in config.rows.sort_by],
-        output_columns,
-    )
-    ascending = [
-        rule.direction == "ASC"
-        for rule in config.rows.sort_by
-    ]
-    return dataframe.sort_values(
-        by=sort_columns,
-        ascending=ascending,
-        na_position="last",
-        kind="mergesort",
-    )
+    sorted_dataframe = dataframe
+    for rule in reversed(config.rows.sort_by):
+        sort_column = _resolve_output_columns(
+            [rule.output_column],
+            output_columns,
+        )[0]
+        sorted_dataframe = sorted_dataframe.sort_values(
+            by=sort_column,
+            ascending=rule.direction == "ASC",
+            na_position="last",
+            kind="mergesort",
+        )
+    return sorted_dataframe
 
 
-def dataframe_preview(
-    dataframe: pd.DataFrame,
-    output_columns: list[str],
-    preview_limit: int,
-) -> list[dict[str, object]]:
-    return [
-        {
-            column: serialize_json_value(row[column])
-            for column in output_columns
-        }
-        for _, row in dataframe.head(preview_limit).iterrows()
-    ]
+def _internal_row_number_column(dataframe: pd.DataFrame) -> str:
+    name = SOURCE_ROW_NUMBER
+    while name in dataframe.columns:
+        name = f"_{name}"
+    return name
 
 
 def run_transformacion_pipeline(
     source_dataframe: pd.DataFrame,
     config: TransformacionExcelConfig,
-    preview_limit: int,
-) -> dict[str, Any]:
-    dataframe = source_dataframe.reset_index(drop=True).copy()
-    dataframe[SOURCE_ROW_NUMBER] = [
+) -> TransformacionPipelineResult:
+    dataframe = source_dataframe.copy(deep=True).reset_index(drop=True)
+    row_number_column = _internal_row_number_column(dataframe)
+    dataframe[row_number_column] = [
         config.source.header_row + 1 + index
         for index in range(len(dataframe))
     ]
-    collector = ValidationIssueCollector()
+    collector = _ValidationIssueCollector()
     total_rows = len(dataframe)
 
-    filtered_dataframe = apply_filters(dataframe, config, collector)
+    filtered_dataframe = _apply_filters(
+        dataframe,
+        config,
+        collector,
+        row_number_column,
+    )
     rows_after_filters = len(filtered_dataframe)
-    output_dataframe, output_columns = build_output_dataframe(
+    output_dataframe, output_columns = _apply_output_columns(
         filtered_dataframe,
         config,
         collector,
+        row_number_column,
     )
 
     valid_indices = [
         index
         for index in filtered_dataframe.index
-        if int(filtered_dataframe.at[index, SOURCE_ROW_NUMBER])
+        if int(filtered_dataframe.at[index, row_number_column])
         not in collector.error_rows
     ]
-    valid_dataframe = output_dataframe.loc[valid_indices].copy()
+    valid_dataframe = output_dataframe.loc[
+        valid_indices,
+        output_columns,
+    ].copy()
     valid_source_rows = filtered_dataframe.loc[
         valid_indices,
-        SOURCE_ROW_NUMBER,
+        row_number_column,
     ].copy()
 
     (
@@ -823,35 +862,40 @@ def run_transformacion_pipeline(
         _deduplicated_source_rows,
         duplicates_detected,
         duplicates_removed,
-    ) = apply_deduplication(
+    ) = _apply_deduplication(
         valid_dataframe,
         valid_source_rows,
         config,
         output_columns,
         collector,
     )
-    final_dataframe = apply_sorting(
+    sorted_dataframe = _apply_sorting(
         deduplicated_dataframe,
         config,
         output_columns,
     )
+    final_dataframe = sorted_dataframe.loc[
+        :,
+        output_columns,
+    ].reset_index(drop=True)
 
-    return {
-        "valid": not collector.error_rows,
-        "total_filas_entrada": total_rows,
-        "filas_despues_filtros": rows_after_filters,
-        "filas_excluidas_por_filtros": total_rows - rows_after_filters,
-        "filas_validas": len(final_dataframe),
-        "filas_con_errores": len(collector.error_rows),
-        "filas_con_advertencias": len(collector.warning_rows),
-        "duplicados_detectados": duplicates_detected,
-        "duplicados_eliminados": duplicates_removed,
-        "columnas_salida": output_columns,
-        "preview_rows": dataframe_preview(
-            final_dataframe,
-            output_columns,
-            preview_limit,
-        ),
-        "errors": collector.build("error"),
-        "warnings": collector.build("warning"),
-    }
+    metrics = TransformacionPipelineMetrics(
+        total_filas_entrada=total_rows,
+        filas_despues_filtros=rows_after_filters,
+        filas_excluidas_por_filtros=total_rows - rows_after_filters,
+        filas_con_errores=len(collector.error_rows),
+        filas_con_advertencias=len(collector.warning_rows),
+        filas_validas=len(final_dataframe),
+        duplicados_detectados=duplicates_detected,
+        duplicados_eliminados=duplicates_removed,
+    )
+    errors = collector.by_severity("ERROR")
+    warnings = collector.by_severity("WARNING")
+    return TransformacionPipelineResult(
+        valid=not errors,
+        final_dataframe=final_dataframe,
+        metrics=metrics,
+        errors=errors,
+        warnings=warnings,
+        output_columns=output_columns,
+    )
