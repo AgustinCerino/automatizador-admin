@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.api.routes.auth import get_current_user
+from app.api.routes.auth import get_current_user, require_admin
 from app.database.session import get_db
 from app.models import Usuario
 from app.schemas.transformacion_excel import (
@@ -14,6 +14,13 @@ from app.schemas.transformacion_excel_inspeccion import (
 )
 from app.schemas.transformacion_excel_generacion import (
     TransformacionExcelGenerationRead,
+)
+from app.schemas.transformacion_excel_plantilla import (
+    TransformacionExcelTemplateApply,
+    TransformacionExcelTemplateCreate,
+    TransformacionExcelTemplateListRead,
+    TransformacionExcelTemplateRead,
+    TransformacionExcelTemplateUpdate,
 )
 from app.schemas.transformacion_excel_validacion import (
     TransformacionExcelValidationRead,
@@ -38,6 +45,15 @@ from app.services.transformacion_excel_validation_service import (
     TransformacionExcelValidationTechnicalError,
     validate_transformacion_execution,
 )
+from app.services.transformacion_excel_template_service import (
+    TransformacionExcelTemplateError,
+    apply_template_to_execution,
+    create_template_from_execution,
+    deactivate_template,
+    list_process_templates,
+    read_template,
+    update_template,
+)
 
 
 router = APIRouter(
@@ -52,6 +68,12 @@ def raise_config_http_error(exc: TransformacionExcelConfigError) -> None:
 
 def raise_generation_http_error(
     exc: TransformacionExcelGenerationError,
+) -> None:
+    raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+def raise_template_http_error(
+    exc: TransformacionExcelTemplateError,
 ) -> None:
     raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
@@ -78,6 +100,125 @@ def inspect_archivo_structure(
         )
     except TransformacionExcelInspeccionError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.get(
+    "/procesos/{proceso_id}/plantillas",
+    response_model=TransformacionExcelTemplateListRead,
+)
+def list_transformacion_templates(
+    proceso_id: int,
+    incluir_inactivas: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+) -> dict:
+    try:
+        return list_process_templates(
+            db,
+            proceso_id,
+            current_user,
+            incluir_inactivas=incluir_inactivas,
+        )
+    except TransformacionExcelTemplateError as exc:
+        raise_template_http_error(exc)
+
+
+@router.get(
+    "/plantillas/{plantilla_id}",
+    response_model=TransformacionExcelTemplateRead,
+)
+def read_transformacion_template(
+    plantilla_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+) -> dict:
+    try:
+        return read_template(db, plantilla_id, current_user)
+    except TransformacionExcelTemplateError as exc:
+        raise_template_http_error(exc)
+
+
+@router.put(
+    "/plantillas/{plantilla_id}",
+    response_model=TransformacionExcelTemplateRead,
+)
+def update_transformacion_template(
+    plantilla_id: int,
+    template_in: TransformacionExcelTemplateUpdate,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_admin),
+) -> dict:
+    try:
+        return update_template(db, plantilla_id, template_in, current_user)
+    except TransformacionExcelTemplateError as exc:
+        raise_template_http_error(exc)
+
+
+@router.delete(
+    "/plantillas/{plantilla_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def deactivate_transformacion_template(
+    plantilla_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_admin),
+) -> Response:
+    try:
+        deactivate_template(db, plantilla_id, current_user)
+    except TransformacionExcelTemplateError as exc:
+        raise_template_http_error(exc)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/{ejecucion_id}/plantillas",
+    response_model=TransformacionExcelTemplateRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_transformacion_template(
+    ejecucion_id: int,
+    template_in: TransformacionExcelTemplateCreate,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_admin),
+) -> dict:
+    try:
+        return create_template_from_execution(
+            db,
+            ejecucion_id,
+            template_in,
+            current_user,
+        )
+    except (TransformacionExcelTemplateError, TransformacionExcelConfigError) as exc:
+        if isinstance(exc, TransformacionExcelTemplateError):
+            raise_template_http_error(exc)
+        raise_config_http_error(exc)
+
+
+@router.post(
+    "/{ejecucion_id}/plantillas/{plantilla_id}/aplicar",
+    response_model=TransformacionExcelConfigRead,
+)
+def apply_transformacion_template(
+    ejecucion_id: int,
+    plantilla_id: int,
+    apply_in: TransformacionExcelTemplateApply,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+) -> dict:
+    try:
+        return apply_template_to_execution(
+            db,
+            ejecucion_id,
+            plantilla_id,
+            apply_in.archivo_id,
+            current_user,
+            sheet_name=apply_in.sheet_name,
+            header_row=apply_in.header_row,
+        )
+    except TransformacionExcelTemplateError as exc:
+        raise_template_http_error(exc)
+    except TransformacionExcelConfigError as exc:
+        raise_config_http_error(exc)
 
 
 @router.post(

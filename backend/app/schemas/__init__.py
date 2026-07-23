@@ -38,6 +38,15 @@ from app.schemas.transformacion_excel_inspeccion import (
 from app.schemas.transformacion_excel_generacion import (
     TransformacionExcelGenerationRead,
 )
+from app.schemas.transformacion_excel_plantilla import (
+    TransformacionExcelTemplateApply,
+    TransformacionExcelTemplateConfig,
+    TransformacionExcelTemplateCreate,
+    TransformacionExcelTemplateListRead,
+    TransformacionExcelTemplateRead,
+    TransformacionExcelTemplateSourceConfig,
+    TransformacionExcelTemplateUpdate,
+)
 from app.schemas.transformacion_excel_validacion import (
     TransformacionExcelValidationIssueRead,
     TransformacionExcelValidationRead,
@@ -69,6 +78,13 @@ __all__ = [
     "TransformacionExcelConfig",
     "TransformacionExcelConfigRead",
     "TransformacionExcelConfigSaveResponse",
+    "TransformacionExcelTemplateApply",
+    "TransformacionExcelTemplateConfig",
+    "TransformacionExcelTemplateCreate",
+    "TransformacionExcelTemplateListRead",
+    "TransformacionExcelTemplateRead",
+    "TransformacionExcelTemplateSourceConfig",
+    "TransformacionExcelTemplateUpdate",
     "TransformacionExcelColumnInspectionRead",
     "TransformacionExcelInspectionWarningRead",
     "TransformacionOutputConfig",

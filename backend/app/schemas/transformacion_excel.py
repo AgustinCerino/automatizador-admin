@@ -15,6 +15,13 @@ def normalize_non_empty_string(value: str) -> str:
     return normalized
 
 
+def normalize_optional_sheet_name(value: str | None) -> str | None:
+    if value is None:
+        return value
+    normalized = value.strip()
+    return normalized or None
+
+
 def validate_decimal_places(value: int | None) -> int | None:
     if value is not None and value < 0:
         raise ValueError("decimal_places no puede ser negativo")
@@ -31,10 +38,7 @@ class TransformacionSourceConfig(BaseModel):
     @field_validator("sheet_name")
     @classmethod
     def strip_optional_sheet_name(cls, value: str | None) -> str | None:
-        if value is None:
-            return value
-        normalized = value.strip()
-        return normalized or None
+        return normalize_optional_sheet_name(value)
 
 
 class SourceOperand(BaseModel):
@@ -321,6 +325,47 @@ class TransformacionOutputConfig(BaseModel):
         return normalize_non_empty_string(value)
 
 
+def validate_transformacion_structure(
+    output_columns: list[OutputColumnTransform],
+    rows: TransformacionRowsConfig,
+) -> None:
+    normalized_output_columns = [
+        column.output_column.strip().lower()
+        for column in output_columns
+    ]
+    if len(normalized_output_columns) != len(set(normalized_output_columns)):
+        raise ValueError("Los nombres de columnas de salida deben ser únicos")
+
+    positions = [column.position for column in output_columns]
+    if len(positions) != len(set(positions)):
+        raise ValueError("Las posiciones de columnas de salida deben ser únicas")
+
+    available_columns = set(normalized_output_columns)
+    duplicate_columns = {
+        column.strip().lower()
+        for column in rows.remove_duplicates.by_output_columns
+    }
+    missing_duplicate_columns = duplicate_columns - available_columns
+    if missing_duplicate_columns:
+        missing = ", ".join(sorted(missing_duplicate_columns))
+        raise ValueError(
+            "Columnas de remove_duplicates inexistentes en output_columns: "
+            f"{missing}",
+        )
+
+    sort_columns = {
+        rule.output_column.strip().lower()
+        for rule in rows.sort_by
+    }
+    missing_sort_columns = sort_columns - available_columns
+    if missing_sort_columns:
+        missing = ", ".join(sorted(missing_sort_columns))
+        raise ValueError(
+            "Columnas de sort_by inexistentes en output_columns: "
+            f"{missing}",
+        )
+
+
 class TransformacionExcelConfig(BaseModel):
     source: TransformacionSourceConfig
     output_columns: list[OutputColumnTransform] = Field(min_length=1)
@@ -333,42 +378,7 @@ class TransformacionExcelConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_config(self) -> "TransformacionExcelConfig":
-        normalized_output_columns = [
-            column.output_column.strip().lower()
-            for column in self.output_columns
-        ]
-        if len(normalized_output_columns) != len(set(normalized_output_columns)):
-            raise ValueError("Los nombres de columnas de salida deben ser únicos")
-
-        positions = [column.position for column in self.output_columns]
-        if len(positions) != len(set(positions)):
-            raise ValueError("Las posiciones de columnas de salida deben ser únicas")
-
-        available_columns = set(normalized_output_columns)
-        duplicate_columns = {
-            column.strip().lower()
-            for column in self.rows.remove_duplicates.by_output_columns
-        }
-        missing_duplicate_columns = duplicate_columns - available_columns
-        if missing_duplicate_columns:
-            missing = ", ".join(sorted(missing_duplicate_columns))
-            raise ValueError(
-                "Columnas de remove_duplicates inexistentes en output_columns: "
-                f"{missing}",
-            )
-
-        sort_columns = {
-            rule.output_column.strip().lower()
-            for rule in self.rows.sort_by
-        }
-        missing_sort_columns = sort_columns - available_columns
-        if missing_sort_columns:
-            missing = ", ".join(sorted(missing_sort_columns))
-            raise ValueError(
-                "Columnas de sort_by inexistentes en output_columns: "
-                f"{missing}",
-            )
-
+        validate_transformacion_structure(self.output_columns, self.rows)
         return self
 
 
