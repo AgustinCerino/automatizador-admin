@@ -12,6 +12,9 @@ from app.services.transformacion_excel_inspeccion_service import (
     normalize_extension,
     resolve_existing_storage_path,
 )
+from app.services.transformacion_excel_trace_service import (
+    append_transformacion_trace_event,
+)
 
 
 TERMINAL_EXECUTION_STATES = {"COMPLETADO", "CANCELADO", "APROBADO", "RECHAZADO"}
@@ -191,11 +194,31 @@ def save_transformacion_config(
     validate_referenced_source_columns(referenced_columns, available_columns)
 
     now = datetime.now(timezone.utc)
+    previous_state = ejecucion.estado
     resumen_json = dict(ejecucion.resumen_json or {})
     transformacion_excel = dict(resumen_json.get("transformacion_excel") or {})
+    replaced_existing_configuration = "configuracion" in transformacion_excel
     transformacion_excel["configuracion"] = config.model_dump(mode="json")
     transformacion_excel["updated_at"] = now.isoformat()
+    transformacion_excel.pop("validacion", None)
+    transformacion_excel.pop("generacion", None)
     resumen_json["transformacion_excel"] = transformacion_excel
+    resumen_json = append_transformacion_trace_event(
+        resumen_json,
+        event_type="CONFIGURATION_SAVED",
+        level="INFO",
+        message="Se guardó la configuración de transformación.",
+        actor_user_id=current_user.id,
+        from_state=previous_state,
+        to_state="CONFIGURADO",
+        metadata={
+            "archivo_id": config.source.archivo_id,
+            "output_columns_count": len(config.output_columns),
+            "filters_count": len(config.rows.filters),
+            "replaced_existing_configuration": replaced_existing_configuration,
+        },
+        occurred_at=now,
+    )
 
     ejecucion.resumen_json = resumen_json
     ejecucion.estado = "CONFIGURADO"

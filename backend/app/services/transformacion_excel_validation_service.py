@@ -34,6 +34,9 @@ from app.services.transformacion_excel_pipeline import (
     TransformacionPipelineResult,
     run_transformacion_pipeline,
 )
+from app.services.transformacion_excel_trace_service import (
+    append_transformacion_trace_event,
+)
 
 
 TECHNICAL_ERROR_MESSAGE = "Error técnico al validar la transformación."
@@ -241,7 +244,9 @@ def persist_validation_result(
     ejecucion: EjecucionProceso,
     pipeline_result: dict[str, Any],
     validated_at: datetime,
+    actor_user_id: int | None = None,
 ) -> dict[str, Any]:
+    previous_state = ejecucion.estado
     resumen_json = dict(ejecucion.resumen_json or {})
     transformacion_excel = dict(
         resumen_json.get("transformacion_excel") or {},
@@ -252,12 +257,54 @@ def persist_validation_result(
     )
     resumen_json["transformacion_excel"] = transformacion_excel
 
-    ejecucion.resumen_json = resumen_json
-    ejecucion.estado = (
+    next_state = (
         "VALIDADO"
         if pipeline_result["valid"]
         else "CONFIGURADO"
     )
+    if pipeline_result["valid"]:
+        event_type = "VALIDATION_SUCCEEDED"
+        event_level = "INFO"
+        event_message = "La validación de la transformación fue exitosa."
+        event_metadata = {
+            "total_filas_entrada": pipeline_result["total_filas_entrada"],
+            "filas_validas": pipeline_result["filas_validas"],
+            "filas_con_advertencias": (
+                pipeline_result["filas_con_advertencias"]
+            ),
+            "duplicados_eliminados": pipeline_result["duplicados_eliminados"],
+        }
+    else:
+        event_type = "VALIDATION_FAILED"
+        event_level = "WARNING"
+        event_message = "La validación detectó errores en los datos."
+        event_metadata = {
+            "filas_con_errores": pipeline_result["filas_con_errores"],
+            "errors_count": sum(
+                int(issue.get("count") or 0)
+                for issue in pipeline_result.get("errors", [])
+                if isinstance(issue, dict)
+            ),
+            "warnings_count": sum(
+                int(issue.get("count") or 0)
+                for issue in pipeline_result.get("warnings", [])
+                if isinstance(issue, dict)
+            ),
+        }
+    resumen_json = append_transformacion_trace_event(
+        resumen_json,
+        event_type=event_type,
+        level=event_level,
+        message=event_message,
+        actor_user_id=actor_user_id,
+        from_state=previous_state,
+        to_state=next_state,
+        metadata=event_metadata,
+        occurred_at=validated_at,
+    )
+
+    ejecucion.resumen_json = resumen_json
+    ejecucion.estado = next_state
     ejecucion.error_message = None
 
     db.commit()
@@ -273,17 +320,43 @@ def persist_validation_result(
 def mark_execution_as_technical_error(
     db: Session,
     ejecucion_id: int,
+    actor_user_id: int | None = None,
 ) -> None:
     db.rollback()
     try:
         ejecucion = db.get(EjecucionProceso, ejecucion_id)
         if ejecucion is None:
             return
+        previous_state = ejecucion.estado
+        occurred_at = datetime.now(timezone.utc)
+        ejecucion.resumen_json = append_transformacion_trace_event(
+            ejecucion.resumen_json,
+            event_type="TECHNICAL_ERROR",
+            level="ERROR",
+            message=TECHNICAL_ERROR_MESSAGE,
+            actor_user_id=actor_user_id,
+            from_state=previous_state,
+            to_state="ERROR",
+            metadata={
+                "operation": "VALIDATION",
+                "error_code": "VALIDATION_TECHNICAL_ERROR",
+            },
+            occurred_at=occurred_at,
+        )
         ejecucion.estado = "ERROR"
         ejecucion.error_message = TECHNICAL_ERROR_MESSAGE
         db.commit()
     except Exception:
         db.rollback()
+        try:
+            ejecucion = db.get(EjecucionProceso, ejecucion_id)
+            if ejecucion is None:
+                return
+            ejecucion.estado = "ERROR"
+            ejecucion.error_message = TECHNICAL_ERROR_MESSAGE
+            db.commit()
+        except Exception:
+            db.rollback()
 
 
 def validate_transformacion_execution(
@@ -314,11 +387,16 @@ def validate_transformacion_execution(
             ejecucion,
             pipeline_result,
             datetime.now(timezone.utc),
+            actor_user_id=current_user.id,
         )
     except TransformacionExcelConfigError:
         raise
     except Exception as exc:
-        mark_execution_as_technical_error(db, ejecucion_id)
+        mark_execution_as_technical_error(
+            db,
+            ejecucion_id,
+            actor_user_id=current_user.id,
+        )
         raise TransformacionExcelValidationTechnicalError(
             TECHNICAL_ERROR_MESSAGE,
         ) from exc

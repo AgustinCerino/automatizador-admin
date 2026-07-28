@@ -22,6 +22,9 @@ from app.services.transformacion_excel_config_service import (
     validate_referenced_source_columns,
     validate_source_file_for_execution,
 )
+from app.services.transformacion_excel_trace_service import (
+    append_transformacion_trace_event,
+)
 
 
 TEMPLATE_MODULE = "TRANSFORMACION_EXCEL"
@@ -435,6 +438,7 @@ def apply_template_to_execution(
     validate_referenced_source_columns(referenced_columns, available_columns)
 
     now = datetime.now(timezone.utc)
+    previous_state = ejecucion.estado
     resumen_json = dict(ejecucion.resumen_json or {})
     transformacion_excel = dict(resumen_json.get("transformacion_excel") or {})
     transformacion_excel["configuracion"] = config.model_dump(mode="json")
@@ -448,6 +452,21 @@ def apply_template_to_execution(
         "applied_at": now.isoformat(),
     }
     resumen_json["transformacion_excel"] = transformacion_excel
+    resumen_json = append_transformacion_trace_event(
+        resumen_json,
+        event_type="TEMPLATE_APPLIED",
+        level="INFO",
+        message="Se aplicó una plantilla de transformación.",
+        actor_user_id=current_user.id,
+        from_state=previous_state,
+        to_state="CONFIGURADO",
+        metadata={
+            "plantilla_id": template_record.id,
+            "template_schema_version": TEMPLATE_SCHEMA_VERSION,
+            "archivo_id": archivo_id,
+        },
+        occurred_at=now,
+    )
 
     ejecucion.resumen_json = resumen_json
     ejecucion.estado = "CONFIGURADO"

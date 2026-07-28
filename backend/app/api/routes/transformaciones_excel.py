@@ -15,6 +15,10 @@ from app.schemas.transformacion_excel_inspeccion import (
 from app.schemas.transformacion_excel_generacion import (
     TransformacionExcelGenerationRead,
 )
+from app.schemas.transformacion_excel_operacion import (
+    TransformacionExcelOperationalSummaryRead,
+    TransformacionExcelTraceListRead,
+)
 from app.schemas.transformacion_excel_plantilla import (
     TransformacionExcelTemplateApply,
     TransformacionExcelTemplateCreate,
@@ -53,6 +57,10 @@ from app.services.transformacion_excel_template_service import (
     list_process_templates,
     read_template,
     update_template,
+)
+from app.services.transformacion_excel_operational_service import (
+    get_transformacion_operational_summary,
+    get_transformacion_trace_list,
 )
 
 
@@ -217,6 +225,46 @@ def apply_transformacion_template(
         )
     except TransformacionExcelTemplateError as exc:
         raise_template_http_error(exc)
+    except TransformacionExcelConfigError as exc:
+        raise_config_http_error(exc)
+
+
+@router.get(
+    "/{ejecucion_id}/resumen",
+    response_model=TransformacionExcelOperationalSummaryRead,
+)
+def read_transformacion_operational_summary(
+    ejecucion_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+) -> TransformacionExcelOperationalSummaryRead:
+    try:
+        return get_transformacion_operational_summary(
+            db,
+            ejecucion_id,
+            current_user,
+        )
+    except TransformacionExcelConfigError as exc:
+        raise_config_http_error(exc)
+
+
+@router.get(
+    "/{ejecucion_id}/trazabilidad",
+    response_model=TransformacionExcelTraceListRead,
+)
+def read_transformacion_trace(
+    ejecucion_id: int,
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+) -> dict:
+    try:
+        return get_transformacion_trace_list(
+            db,
+            ejecucion_id,
+            current_user,
+            limit,
+        )
     except TransformacionExcelConfigError as exc:
         raise_config_http_error(exc)
 

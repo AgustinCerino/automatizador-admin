@@ -38,6 +38,16 @@ from app.schemas.transformacion_excel_inspeccion import (
 from app.schemas.transformacion_excel_generacion import (
     TransformacionExcelGenerationRead,
 )
+from app.schemas.transformacion_excel_operacion import (
+    TransformacionExcelGenerationOperationalRead,
+    TransformacionExcelOperationalIssueRead,
+    TransformacionExcelOperationalSummaryRead,
+    TransformacionExcelSourceOperationalRead,
+    TransformacionExcelTemplateOperationalRead,
+    TransformacionExcelTraceEventRead,
+    TransformacionExcelTraceListRead,
+    TransformacionExcelValidationOperationalRead,
+)
 from app.schemas.transformacion_excel_plantilla import (
     TransformacionExcelTemplateApply,
     TransformacionExcelTemplateConfig,
@@ -91,6 +101,14 @@ __all__ = [
     "TransformacionRowsConfig",
     "TransformacionSourceConfig",
     "TransformacionExcelGenerationRead",
+    "TransformacionExcelGenerationOperationalRead",
+    "TransformacionExcelOperationalIssueRead",
+    "TransformacionExcelOperationalSummaryRead",
+    "TransformacionExcelSourceOperationalRead",
+    "TransformacionExcelTemplateOperationalRead",
+    "TransformacionExcelTraceEventRead",
+    "TransformacionExcelTraceListRead",
+    "TransformacionExcelValidationOperationalRead",
     "TransformacionExcelStructureRead",
     "TransformacionExcelValidationIssueRead",
     "TransformacionExcelValidationRead",

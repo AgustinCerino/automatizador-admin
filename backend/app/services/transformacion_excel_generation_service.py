@@ -31,6 +31,9 @@ from app.services.transformacion_excel_validation_service import (
     persist_validation_result,
     read_configured_source_dataframe,
 )
+from app.services.transformacion_excel_trace_service import (
+    append_transformacion_trace_event,
+)
 from app.services.transformacion_excel_xlsx_writer import (
     TransformacionExcelXlsxWriterError,
     build_output_path,
@@ -219,18 +222,45 @@ def validate_output_config(config: TransformacionExcelConfig) -> None:
 def mark_generation_as_technical_error(
     db: Session,
     ejecucion_id: int,
+    actor_user_id: int | None = None,
 ) -> None:
     db.rollback()
     try:
         ejecucion = db.get(EjecucionProceso, ejecucion_id)
         if ejecucion is None:
             return
+        previous_state = ejecucion.estado
+        occurred_at = datetime.now(timezone.utc)
+        ejecucion.resumen_json = append_transformacion_trace_event(
+            ejecucion.resumen_json,
+            event_type="TECHNICAL_ERROR",
+            level="ERROR",
+            message=GENERATION_TECHNICAL_ERROR_MESSAGE,
+            actor_user_id=actor_user_id,
+            from_state=previous_state,
+            to_state="ERROR",
+            metadata={
+                "operation": "GENERATION",
+                "error_code": "GENERATION_TECHNICAL_ERROR",
+            },
+            occurred_at=occurred_at,
+        )
         ejecucion.estado = "ERROR"
         ejecucion.error_message = GENERATION_TECHNICAL_ERROR_MESSAGE
-        ejecucion.finished_at = datetime.now(timezone.utc)
+        ejecucion.finished_at = occurred_at
         db.commit()
     except Exception:
         db.rollback()
+        try:
+            ejecucion = db.get(EjecucionProceso, ejecucion_id)
+            if ejecucion is None:
+                return
+            ejecucion.estado = "ERROR"
+            ejecucion.error_message = GENERATION_TECHNICAL_ERROR_MESSAGE
+            ejecucion.finished_at = datetime.now(timezone.utc)
+            db.commit()
+        except Exception:
+            db.rollback()
 
 
 def remove_file_if_present(path: Path | None) -> None:
@@ -291,6 +321,7 @@ def persist_generation_result(
     total_rows: int,
     output_columns: list[str],
     generated_at: datetime,
+    actor_user_id: int | None = None,
 ) -> tuple[Archivo, list[Path]]:
     size_bytes = output_path.stat().st_size
     output_checksum = calculate_sha256(output_path)
@@ -322,6 +353,22 @@ def persist_generation_result(
         "source_checksum": source_checksum,
     }
     resumen_json["transformacion_excel"] = transformacion_excel
+    resumen_json = append_transformacion_trace_event(
+        resumen_json,
+        event_type="GENERATION_COMPLETED",
+        level="INFO",
+        message="La generación del archivo de salida se completó.",
+        actor_user_id=actor_user_id,
+        from_state="PROCESANDO",
+        to_state="COMPLETADO",
+        metadata={
+            "archivo_id": archivo.id,
+            "total_filas": total_rows,
+            "size_bytes": size_bytes,
+            "output_columns_count": len(output_columns),
+        },
+        occurred_at=generated_at,
+    )
 
     ejecucion.resumen_json = resumen_json
     ejecucion.estado = "COMPLETADO"
@@ -354,7 +401,24 @@ def generate_transformacion_result(
     if ejecucion.estado == "COMPLETADO" and records:
         existing_path = resolve_valid_output_path(records[0], ejecucion_id)
         if existing_path is not None:
-            db.rollback()
+            reused_at = datetime.now(timezone.utc)
+            checksum = records[0].checksum or calculate_sha256(existing_path)
+            ejecucion.resumen_json = append_transformacion_trace_event(
+                ejecucion.resumen_json,
+                event_type="GENERATION_REUSED",
+                level="INFO",
+                message="Se reutilizó el archivo de salida existente.",
+                actor_user_id=current_user.id,
+                from_state="COMPLETADO",
+                to_state="COMPLETADO",
+                metadata={
+                    "archivo_id": records[0].id,
+                    "checksum": checksum,
+                },
+                occurred_at=reused_at,
+            )
+            db.commit()
+            db.refresh(ejecucion)
             return build_generation_response(
                 ejecucion,
                 records[0],
@@ -363,6 +427,19 @@ def generate_transformacion_result(
             )
 
     validate_generation_state(ejecucion)
+    previous_state = ejecucion.estado
+    started_at = datetime.now(timezone.utc)
+    ejecucion.resumen_json = append_transformacion_trace_event(
+        ejecucion.resumen_json,
+        event_type="GENERATION_STARTED",
+        level="INFO",
+        message="Se inició la generación del archivo de salida.",
+        actor_user_id=current_user.id,
+        from_state=previous_state,
+        to_state="PROCESANDO",
+        metadata={},
+        occurred_at=started_at,
+    )
     ejecucion.estado = "PROCESANDO"
     ejecucion.error_message = None
     ejecucion.finished_at = None
@@ -387,6 +464,7 @@ def generate_transformacion_result(
                 ejecucion,
                 validation_payload,
                 datetime.now(timezone.utc),
+                actor_user_id=current_user.id,
             )
             raise TransformacionExcelGenerationConflictError(
                 "La transformación contiene errores y debe validarse nuevamente.",
@@ -414,6 +492,7 @@ def generate_transformacion_result(
             len(result.final_dataframe),
             result.output_columns,
             generated_at,
+            actor_user_id=current_user.id,
         )
         for obsolete_path in obsolete_paths:
             allowed_directory = processed_execution_directory(
@@ -436,7 +515,11 @@ def generate_transformacion_result(
     except Exception as exc:
         if output_path is not None and not output_existed_before:
             remove_file_if_present(output_path)
-        mark_generation_as_technical_error(db, ejecucion_id)
+        mark_generation_as_technical_error(
+            db,
+            ejecucion_id,
+            actor_user_id=current_user.id,
+        )
         raise TransformacionExcelGenerationTechnicalError(
             GENERATION_TECHNICAL_ERROR_MESSAGE,
         ) from exc
