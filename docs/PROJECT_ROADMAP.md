@@ -186,7 +186,19 @@ Conciliación Excel	Completado	Mapping, ejecución, resultados, revisión manual
 Tarea 14 — Base de Transformación Excel	Completado	Proceso TRANSFORMACION_EXCEL, contrato de configuración y seed del proceso
 Tarea 15 — Inspección de estructura	Completado	Inspección de CSV/XLS/XLSX: hojas, columnas, preview, tipos sugeridos, nulos, filas y warnings
 Tarea 16 — Configuración persistida	Completado	Guardado y consulta de la configuración de transformación por ejecución
-7. Tarea actual autorizada
+Tarea 17 — Dry-run y validación persistida	Completado	Validación funcional, métricas, preview y estado VALIDADO/CONFIGURADO
+Tarea 18 — Motor único de transformación	Completado	Pipeline puro con las cinco operaciones, filtros, deduplicación y ordenamiento
+Tarea 19 — Generación y descarga	Completado	Writer XLSX, almacenamiento EXCEL_OUTPUT, generación idempotente y descarga
+Tarea 20 — Plantillas reutilizables	Completado	Creación, consulta, modificación, desactivación y aplicación con permisos existentes
+Tarea 21 — Operación y trazabilidad	Completado	Resumen operativo, issues, capacidades, acción requerida y eventos sanitizados
+Tarea 22 — Hardening y cierre técnico	Completado	Límites, rutas seguras, integridad, concurrencia, pruebas y documentación técnica
+
+Estado autorizado actual: las Tareas 14 a 22 están completadas en el backend. El próximo bloque funcional definido por planificación externa es el frontend; este documento no autoriza implementarlo sin su prompt operativo específico.
+
+7. Registro histórico del alcance previo de Tarea 17
+
+La sección siguiente conserva el alcance que guió el primer bloque de ejecución. Fue superada por las Tareas 17 a 22 verificadas arriba y no representa la tarea vigente.
+
 Tarea 17 — Ejecutar una transformación Excel configurada
 7.1 Objetivo
 
@@ -341,7 +353,11 @@ Confirmación de que no se modificaron tablas, modelos ni migraciones.
 
 No se autoriza declarar la tarea terminada solo porque el endpoint fue creado o porque Swagger muestra una respuesta exitosa.
 
-9. Trabajo posterior a Tarea 17
+9. Próximo bloque planificado
+
+El backend de Transformación Excel queda técnicamente cerrado en Tarea 22. El siguiente bloque planificado es el frontend. Su alcance concreto requiere un prompt operativo externo y no se infiere en este roadmap.
+
+9.1 Registro histórico posterior a Tarea 17
 
 No hay una tarea funcional posterior autorizada automáticamente.
 

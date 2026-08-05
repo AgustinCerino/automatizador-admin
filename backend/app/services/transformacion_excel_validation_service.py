@@ -1,5 +1,6 @@
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -36,6 +37,12 @@ from app.services.transformacion_excel_pipeline import (
 )
 from app.services.transformacion_excel_trace_service import (
     append_transformacion_trace_event,
+)
+from app.services.transformacion_excel_security_service import (
+    calculate_file_sha256,
+    calculate_transformacion_config_checksum,
+    current_transformacion_limits,
+    validate_source_file_security,
 )
 
 
@@ -74,9 +81,10 @@ def serialize_json_value(value: Any) -> Any:
 def read_configured_source_dataframe(
     archivo: Archivo,
     config: TransformacionExcelConfig,
+    source_path: Path | None = None,
 ) -> pd.DataFrame:
     extension = normalize_extension(archivo.extension)
-    path = resolve_existing_storage_path(archivo)
+    path = source_path or resolve_existing_storage_path(archivo)
     available_sheets = get_available_sheets(path, extension)
     selected_sheet_name = select_sheet_name(
         extension,
@@ -190,11 +198,13 @@ def run_dry_run(
     archivo: Archivo,
     config: TransformacionExcelConfig,
     preview_limit: int,
+    source_path: Path | None = None,
 ) -> dict[str, Any]:
     try:
         source_dataframe = read_configured_source_dataframe(
             archivo,
             config,
+            source_path,
         )
     except TransformacionExcelInspeccionError as exc:
         raise TransformacionExcelConfigError(
@@ -216,8 +226,9 @@ def run_dry_run(
 def build_persisted_validation(
     pipeline_result: dict[str, Any],
     validated_at: datetime,
+    integrity: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    persisted = {
         "valid": pipeline_result["valid"],
         "total_filas_entrada": pipeline_result["total_filas_entrada"],
         "filas_despues_filtros": pipeline_result["filas_despues_filtros"],
@@ -237,6 +248,9 @@ def build_persisted_validation(
         "warnings": pipeline_result["warnings"],
         "validated_at": validated_at.isoformat(),
     }
+    if integrity is not None:
+        persisted.update(integrity)
+    return persisted
 
 
 def persist_validation_result(
@@ -245,6 +259,7 @@ def persist_validation_result(
     pipeline_result: dict[str, Any],
     validated_at: datetime,
     actor_user_id: int | None = None,
+    integrity: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     previous_state = ejecucion.estado
     resumen_json = dict(ejecucion.resumen_json or {})
@@ -254,7 +269,9 @@ def persist_validation_result(
     transformacion_excel["validacion"] = build_persisted_validation(
         pipeline_result,
         validated_at,
+        integrity,
     )
+    transformacion_excel.pop("validation_invalidation_code", None)
     resumen_json["transformacion_excel"] = transformacion_excel
 
     next_state = (
@@ -375,19 +392,40 @@ def validate_transformacion_execution(
         validate_execution_is_editable(ejecucion)
         config = get_persisted_config(db, ejecucion_id, current_user)
         archivo = get_archivo_or_raise(db, config.source.archivo_id)
-        validate_source_file_for_execution(archivo, ejecucion_id)
+        source_path = validate_source_file_for_execution(archivo, ejecucion_id)
+        source_checksum_before_read = calculate_file_sha256(source_path)
 
         pipeline_result = run_dry_run(
             archivo,
             config,
             preview_limit,
+            source_path,
         )
+        source_size_bytes, source_modified_at = validate_source_file_security(
+            source_path,
+            archivo.extension or "",
+        )
+        source_checksum = calculate_file_sha256(source_path)
+        if source_checksum != source_checksum_before_read:
+            raise TransformacionExcelConfigError(
+                "SOURCE_CHANGED_DURING_VALIDATION: El archivo fuente cambió "
+                "durante la validación.",
+                409,
+            )
+        integrity = {
+            "source_checksum": source_checksum,
+            "config_checksum": calculate_transformacion_config_checksum(config),
+            "source_size_bytes": source_size_bytes,
+            "source_modified_at": source_modified_at,
+            "limits": current_transformacion_limits(),
+        }
         return persist_validation_result(
             db,
             ejecucion,
             pipeline_result,
             datetime.now(timezone.utc),
             actor_user_id=current_user.id,
+            integrity=integrity,
         )
     except TransformacionExcelConfigError:
         raise

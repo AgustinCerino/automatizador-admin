@@ -30,7 +30,7 @@ La ejecución real de transformaciones Excel no fue encontrada en rutas o servic
 
 **Aspectos que no se pueden confirmar**
 
-No hay README ni documentación funcional previa inspeccionada en el repositorio antes de crear este archivo. Evidencia: comando `rg --files -g 'README*' -g 'docs/**' -g '!backend/.venv/**'` sin resultados antes de crear `docs/PROJECT_HANDOFF.md`. Roadmap funcional: `NO ENCONTRADO EN EL CÓDIGO INSPECCIONADO`.
+El repositorio contiene `docs/PROJECT_ROADMAP.md`, este handoff y `backend/docs/TRANSFORMACION_EXCEL.md`. Las afirmaciones históricas de ausencia documental corresponden al momento inicial en que se creó este handoff y quedan reemplazadas por la actualización técnica de la sección 3.1.
 
 ## 3. Estado verificado del repositorio
 
@@ -92,7 +92,20 @@ pandas
 openpyxl
 xlrd
 python-dotenv
+httpx
 ```
+
+## 3.1 Actualización técnica: cierre de Transformación Excel
+
+Esta actualización reemplaza las observaciones históricas posteriores que indican que no existían ejecución, generación o pruebas. El módulo `TRANSFORMACION_EXCEL` está implementado en backend con inspección, configuración, dry-run, motor compartido, writer XLSX, generación y descarga, plantillas, resumen operativo, trazabilidad y hardening. La referencia técnica detallada es `backend/docs/TRANSFORMACION_EXCEL.md`.
+
+Estados usados por el flujo: `CARGADO`, `CONFIGURADO`, `VALIDADO`, `PROCESANDO`, `COMPLETADO` y `ERROR`, respetando además los terminales existentes `CANCELADO`, `APROBADO` y `RECHAZADO`. La información nueva de integridad se persiste en `EjecucionProceso.resumen_json`; no se modificaron modelos, tablas ni migraciones.
+
+La seguridad del módulo está centralizada en `backend/app/services/transformacion_excel_security_service.py`: tamaño real, dimensiones, preflight ZIP para XLSX, resolución canónica dentro de storage y checksums deterministas. Los defaults configurables son 50 MB, 200000 filas, 300 columnas, 50 hojas, 250 MB descomprimidos, relación 100 y 30 minutos para detectar `PROCESANDO` abandonado. Las variables están en `backend/app/core/config.py` y `backend/.env.example`.
+
+Las pruebas unitarias usan `unittest` en `backend/tests/`. Las integrales están en `backend/tests/integration/`, requieren una PostgreSQL exclusiva mediante `TEST_DATABASE_URL`, rechazan usar exactamente `DATABASE_URL`, trabajan con transacciones revertibles y storage temporal, y se omiten sin abrir una conexión cuando falta esa variable. La ejecución local verificada tras el hardening descubrió 127 pruebas y terminó correctamente con dos omisiones controladas: la suite integral por ausencia de `TEST_DATABASE_URL` y el caso de symlink porque el entorno Windows no permitió crearlo.
+
+El frontend continúa pendiente y es el próximo bloque definido en `docs/PROJECT_ROADMAP.md`.
 
 ## 4. Stack tecnológico y dependencias
 
@@ -247,6 +260,16 @@ Todos los routers son incluidos desde `backend/app/main.py`. Las rutas automáti
 | GET | `/transformaciones-excel/archivos/{archivo_id}/estructura` | `backend/app/api/routes/transformaciones_excel.py` | `get_current_user` | `archivo_id`, query `sheet_name`, `header_row`, `limit` | Ninguna | `TransformacionExcelStructureRead` | `build_transformacion_excel_structure` | VERIFICADO DIRECTAMENTE |
 | POST | `/transformaciones-excel/{ejecucion_id}/configuracion` | `backend/app/api/routes/transformaciones_excel.py` | `get_current_user` | `ejecucion_id` | `TransformacionExcelConfig` | `TransformacionExcelConfigRead` | `save_transformacion_config` | VERIFICADO DIRECTAMENTE |
 | GET | `/transformaciones-excel/{ejecucion_id}/configuracion` | `backend/app/api/routes/transformaciones_excel.py` | `get_current_user` | `ejecucion_id` | Ninguna | `TransformacionExcelConfigRead` | `get_saved_transformacion_config` | VERIFICADO DIRECTAMENTE |
+| POST | `/transformaciones-excel/{ejecucion_id}/validar` | `backend/app/api/routes/transformaciones_excel.py` | `get_current_user` | `ejecucion_id`, query `preview_limit` | Ninguna | `TransformacionExcelValidationRead` | `validate_transformacion_execution` | VERIFICADO DIRECTAMENTE |
+| POST | `/transformaciones-excel/{ejecucion_id}/generar` | `backend/app/api/routes/transformaciones_excel.py` | `get_current_user` | `ejecucion_id` | Ninguna | `TransformacionExcelGenerationRead` | `generate_transformacion_result` | VERIFICADO DIRECTAMENTE |
+| GET | `/transformaciones-excel/{ejecucion_id}/resultado` | `backend/app/api/routes/transformaciones_excel.py` | `get_current_user` | `ejecucion_id` | Ninguna | `TransformacionExcelGenerationRead` | `get_transformacion_result` | VERIFICADO DIRECTAMENTE |
+| GET | `/transformaciones-excel/{ejecucion_id}/resultado/descargar` | `backend/app/api/routes/transformaciones_excel.py` | `get_current_user` | `ejecucion_id` | Ninguna | `FileResponse` XLSX | `get_transformacion_result_download` | VERIFICADO DIRECTAMENTE |
+| GET | `/transformaciones-excel/{ejecucion_id}/resumen` | `backend/app/api/routes/transformaciones_excel.py` | `get_current_user` | `ejecucion_id` | Ninguna | `TransformacionExcelOperationalSummaryRead` | `get_transformacion_operational_summary` | VERIFICADO DIRECTAMENTE |
+| GET | `/transformaciones-excel/{ejecucion_id}/trazabilidad` | `backend/app/api/routes/transformaciones_excel.py` | `get_current_user` | `ejecucion_id`, query `limit` | Ninguna | `TransformacionExcelTraceListRead` | `get_transformacion_trace_list` | VERIFICADO DIRECTAMENTE |
+| GET | `/transformaciones-excel/procesos/{proceso_id}/plantillas` | `backend/app/api/routes/transformaciones_excel.py` | `get_current_user` | `proceso_id`, query `incluir_inactivas` | Ninguna | `TransformacionExcelTemplateListRead` | `list_process_templates` | VERIFICADO DIRECTAMENTE |
+| GET, PUT, DELETE | `/transformaciones-excel/plantillas/{plantilla_id}` | `backend/app/api/routes/transformaciones_excel.py` | GET `get_current_user`; PUT/DELETE `require_admin` | `plantilla_id` | Update en PUT | Plantilla o 204 | Servicios de plantilla | VERIFICADO DIRECTAMENTE |
+| POST | `/transformaciones-excel/{ejecucion_id}/plantillas` | `backend/app/api/routes/transformaciones_excel.py` | `require_admin` | `ejecucion_id` | `TransformacionExcelTemplateCreate` | `TransformacionExcelTemplateRead`, 201 | `create_template_from_execution` | VERIFICADO DIRECTAMENTE |
+| POST | `/transformaciones-excel/{ejecucion_id}/plantillas/{plantilla_id}/aplicar` | `backend/app/api/routes/transformaciones_excel.py` | `get_current_user` | `ejecucion_id`, `plantilla_id` | `TransformacionExcelTemplateApply` | `TransformacionExcelConfigRead` | `apply_template_to_execution` | VERIFICADO DIRECTAMENTE |
 | GET | `/docs` | FastAPI automático | Pública | Ninguno | N/A | Swagger UI | FastAPI | VERIFICADO DIRECTAMENTE |
 | GET | `/docs/oauth2-redirect` | FastAPI automático | Pública | Ninguno | N/A | OAuth2 redirect UI | FastAPI | VERIFICADO DIRECTAMENTE |
 | GET | `/redoc` | FastAPI automático | Pública | Ninguno | N/A | ReDoc | FastAPI | VERIFICADO DIRECTAMENTE |
@@ -296,10 +319,18 @@ No se encontró configuración CORS en `backend/app/main.py` ni import de middle
 | `SECRET_KEY` | `backend/app/core/config.py`, `backend/.env.example` | Firma JWT | No estricta: hay default inseguro | `change-this-secret-key` |
 | `ALGORITHM` | `backend/app/core/config.py`, `backend/.env.example` | Algoritmo JWT | No estricta: default `HS256` | `HS256` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `backend/app/core/config.py`, `backend/.env.example` | Expiración del access token | No estricta: default `60` | `60` |
+| `TRANSFORMACION_EXCEL_MAX_FILE_SIZE_MB` | Config y `.env.example` | Tamaño físico máximo | No: default positivo | `50` |
+| `TRANSFORMACION_EXCEL_MAX_ROWS` | Config y `.env.example` | Filas de datos máximas | No: default positivo | `200000` |
+| `TRANSFORMACION_EXCEL_MAX_COLUMNS` | Config y `.env.example` | Columnas máximas | No: default positivo | `300` |
+| `TRANSFORMACION_EXCEL_MAX_SHEETS` | Config y `.env.example` | Hojas XLSX máximas | No: default positivo | `50` |
+| `TRANSFORMACION_EXCEL_MAX_XLSX_UNCOMPRESSED_MB` | Config y `.env.example` | Expansión XLSX máxima | No: default positivo | `250` |
+| `TRANSFORMACION_EXCEL_MAX_XLSX_COMPRESSION_RATIO` | Config y `.env.example` | Relación de compresión máxima | No: default positivo | `100` |
+| `TRANSFORMACION_EXCEL_STALE_PROCESSING_MINUTES` | Config y `.env.example` | Umbral operativo de `PROCESANDO` abandonado | No: default positivo | `30` |
+| `TEST_DATABASE_URL` | Solo entorno de tests integrales | PostgreSQL exclusiva de testing | Sí para ejecutar integración; no tiene fallback | No se versiona valor |
 
 `SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")` indica que el backend lee `.env` desde el directorio de ejecución. `.gitignore` ignora `.env` y `backend/.env`; no se documentan ni exponen valores reales.
 
-No se encontró README con instrucciones de setup local. Estado: `NO ENCONTRADO EN EL CÓDIGO INSPECCIONADO`.
+No se encontró README general. La operación y testing del módulo de Transformación Excel están documentados en `backend/docs/TRANSFORMACION_EXCEL.md`.
 
 ## 10. Comandos verificables para operar el proyecto
 
@@ -314,7 +345,7 @@ Esta sección incluye solo comandos respaldados por scripts o configuración exi
 | Crear tablas sin Alembic | Desde `backend/`: `python scripts/create_tables.py` | `backend/scripts/create_tables.py` contiene `if __name__ == "__main__": main()` | Comando respaldado por script ejecutable; variante de intérprete puede depender del entorno |
 | Ejecutar seed | Desde `backend/`: `python scripts/seed_initial_data.py` | `backend/scripts/seed_initial_data.py` contiene `if __name__ == "__main__": main()` | Comando respaldado por script ejecutable; variante de intérprete puede depender del entorno |
 | Ejecutar migraciones | `PENDIENTE DE CONFIRMACIÓN` | `backend/alembic.ini`, `backend/alembic/env.py` existen | No hay migraciones versionadas en `backend/alembic/versions/`; no hay comando documentado |
-| Ejecutar pruebas | `NO ENCONTRADO EN EL CÓDIGO INSPECCIONADO` | Búsqueda `rg --files -g '*test*' -g '*spec*' -g '!backend/.venv/**' -g '!backend/storage/**'` | Solo se encontró `test_archivo_a.csv` y archivos con `inspeccion` en el nombre; no suite de tests |
+| Ejecutar pruebas | Desde `backend/`: `.\\.venv\\Scripts\\python.exe -m unittest discover -s tests -p "test_*.py"` | `backend/tests/`, `backend/docs/TRANSFORMACION_EXCEL.md` | Ejecuta unitarias; la integral se omite si falta `TEST_DATABASE_URL` |
 | Verificar salud de la aplicación | Endpoint `GET /health`; comando `PENDIENTE DE CONFIRMACIÓN` | `backend/app/api/routes/health.py` | No hay comando curl/http documentado |
 | Inspeccionar base de datos | `PENDIENTE DE CONFIRMACIÓN` | No hay script dedicado; se usó inspección ad hoc durante este handoff | No documentado en repo |
 
@@ -355,14 +386,14 @@ Estos comandos se ejecutaron únicamente para lectura, ayuda o inspección. No s
 | Revisión manual | Actualiza observación y `requiere_revision`; resume pendientes/revisados | `conciliacion_revision_service.py`, `resultado_revision.py`, `conciliaciones.py` | IMPLEMENTADA Y VERIFICADA EN CÓDIGO | No registra usuario ni auditoría por cada revisión | Medio |
 | Aprobación/rechazo | ADMIN aprueba si no hay pendientes; rechaza con motivo opcional | `conciliacion_revision_service.py`, `conciliaciones.py` | IMPLEMENTADA Y VERIFICADA EN CÓDIGO | Rechazo guarda motivo en `error_message` y `resumen_json["rechazo"]`; sin tabla de auditoría | Medio |
 | Exportación Excel | Genera `.xlsx` con hojas de resumen y resultados en `backend/storage/processed/{ejecucion_id}/` | `conciliacion_export_service.py`, endpoint `/exportar` | IMPLEMENTADA Y VERIFICADA EN CÓDIGO | Usa storage local; OpenAPI puede no reflejar con precisión `FileResponse` | Medio |
-| Inspección de estructura para transformación Excel | Detecta hojas, columnas, tipos, preview y warnings | `transformaciones_excel.py`, `transformacion_excel_inspeccion_service.py`, schema inspección | IMPLEMENTADA Y VERIFICADA EN CÓDIGO | No ejecuta transformación | Medio |
-| Configuración de transformación Excel | Valida contrato Pydantic y guarda configuración en `resumen_json["transformacion_excel"]["configuracion"]` | `transformacion_excel.py`, `transformacion_excel_config_service.py`, `transformaciones_excel.py` | IMPLEMENTADA Y VERIFICADA EN CÓDIGO | No se encontró generación de archivo transformado | Alto |
+| Inspección de estructura para transformación Excel | Detecta hojas, columnas, tipos, preview y warnings con límites de seguridad | `transformaciones_excel.py`, `transformacion_excel_inspeccion_service.py`, `transformacion_excel_security_service.py` | IMPLEMENTADA Y VERIFICADA EN CÓDIGO | XLS usa lector binario, sin controles ZIP aplicables a XLSX | Medio |
+| Transformación Excel completa | Configuración, dry-run, pipeline, XLSX, plantillas, resumen, trazas, integridad y descarga | Router, schemas y servicios `transformacion_excel_*` | IMPLEMENTADA Y VERIFICADA EN CÓDIGO Y TESTS | Backend sin frontend; storage local; integración requiere PostgreSQL de test externa | Alto |
 | Creación de tablas | Script usa `Base.metadata.create_all(bind=engine)` | `backend/scripts/create_tables.py` | IMPLEMENTADA Y VERIFICADA EN CÓDIGO | `create_all` no altera tablas existentes | Alto |
 | Seed inicial | Crea/reutiliza Cliente Demo, Admin Demo, procesos y configuración de conciliación | `backend/scripts/seed_initial_data.py` | IMPLEMENTADA Y VERIFICADA EN CÓDIGO | Depende de DB accesible y schema existente | Medio |
 
 ## 12. Funcionalidades planificadas o pendientes
 
-No hay hoja de ruta funcional documentada en el repositorio. Estado: `NO ENCONTRADO EN EL CÓDIGO INSPECCIONADO`.
+La hoja de ruta funcional vigente es `docs/PROJECT_ROADMAP.md`; las Tareas 14 a 22 figuran completadas y el frontend es el próximo bloque planificado.
 
 No se encontraron marcadores `TODO` o `FIXME` relevantes fuera de dependencias/venv/storage. Evidencia: `rg -n "TODO|FIXME|PENDIENTE|pass|print\(" -g '!backend/.venv/**' -g '!backend/storage/**'` no devolvió TODO/FIXME reales; sí existe un `print` de debug en `backend/alembic/env.py`.
 
@@ -371,8 +402,8 @@ Elementos incompletos deducibles técnicamente, sin convertirlos en roadmap de p
 | Elemento | Evidencia | Estado |
 | --- | --- | --- |
 | Migraciones Alembic versionadas | `backend/alembic/versions/` solo tiene `.gitkeep` y `__pycache__`; tabla `alembic_version` local sin filas | IMPLEMENTACIÓN PARCIAL |
-| Suite de pruebas automatizadas | No se encontraron archivos de test/spec de aplicación | `NO ENCONTRADO EN EL CÓDIGO INSPECCIONADO` |
-| Ejecución real de transformación Excel | Router de transformación contiene inspección y configuración, no ejecución | `NO ENCONTRADO EN EL CÓDIGO INSPECCIONADO` |
+| Frontend de Transformación Excel | No existe código frontend en el repositorio; siguiente bloque según roadmap | PENDIENTE |
+| Tests integrales ejecutados contra PostgreSQL | Suite presente y aislada; `TEST_DATABASE_URL` no estaba configurada en esta verificación | PENDIENTE DE ENTORNO EXTERNO |
 | Comandos documentados de setup/run/test | No hay README/Makefile/pyproject/package.json | `NO ENCONTRADO EN EL CÓDIGO INSPECCIONADO` |
 
 > La prioridad, el orden y el alcance de las próximas tareas deben ser definidos por el prompt de planificación externo. Codex no debe seleccionar ni ampliar tareas por cuenta propia.
@@ -383,7 +414,7 @@ La siguiente tarea debe llegar mediante un prompt externo de planificación o ej
 
 Si la tarea implica modificar modelos, columnas, relaciones, tipos, índices, restricciones o datos iniciales, debe existir una decisión explícita sobre estrategia de migraciones antes de tocar el esquema.
 
-La ejecución real de Transformación Excel no fue encontrada en el código inspeccionado. Esta observación no define una prioridad, compromiso ni tarea de roadmap.
+La ejecución real de Transformación Excel está implementada. El siguiente bloque planificado es el frontend y requiere su prompt operativo específico.
 
 ## 13. Decisiones técnicas verificadas
 
@@ -399,7 +430,7 @@ La ejecución real de Transformación Excel no fue encontrada en el código insp
 | Soft delete por estado en varias entidades | `clientes.py`, `procesos.py`, `ejecuciones.py` | Evita borrado físico en endpoints DELETE | No se observa política global de filtrado de inactivos |
 | Storage local bajo `backend/storage/` | `file_service.py`, `conciliacion_export_service.py`, `.gitignore` | Uploads y exports dependen del filesystem local | No se puede concluir estrategia cloud/backups |
 | Configuraciones dinámicas en `resumen_json` | `conciliacion_mapping_service.py`, `transformacion_excel_config_service.py` | Evita tablas nuevas para mapping/config | Puede complejizar consultas y versionado; no hay decisión documentada explícita |
-| Transformación Excel usa contrato Pydantic discriminado | `backend/app/schemas/transformacion_excel.py` | Valida operaciones `SOURCE`, `CONSTANT`, `CONCAT`, `ARITHMETIC`, `VALUE_MAP` | No se puede concluir motor de ejecución final |
+| Transformación Excel usa contrato Pydantic discriminado y motor puro compartido | Schema y `backend/app/services/transformacion_excel_pipeline.py` | Valida y ejecuta `SOURCE`, `CONSTANT`, `CONCAT`, `ARITHMETIC`, `VALUE_MAP` | No define operaciones futuras fuera del MVP |
 
 ## 14. Riesgos, deuda técnica y precauciones
 
@@ -407,7 +438,7 @@ La ejecución real de Transformación Excel no fue encontrada en el código insp
 | --- | --- | --- | --- |
 | Riesgo confirmado | No hay migraciones Alembic versionadas para reproducir/evolucionar schema | `backend/alembic/versions/` sin revisiones; schema creado por `create_all` | Alto |
 | Riesgo confirmado | `create_all` no aplica cambios a tablas existentes | `backend/scripts/create_tables.py` usa `Base.metadata.create_all(bind=engine)` | Alto |
-| Riesgo confirmado | No se encontró suite de pruebas automatizadas | Búsqueda de tests sin resultados aplicables | Alto |
+| Riesgo controlado | Las pruebas integrales requieren una PostgreSQL exclusiva externa | `backend/tests/integration/`, `TEST_DATABASE_URL` | Medio |
 | Riesgo confirmado | `SECRET_KEY` tiene default inseguro si no se sobreescribe | `backend/app/core/config.py` default `change-me-in-env` | Alto |
 | Riesgo confirmado | Storage local puede perder archivos o variar por entorno | `backend/app/services/file_service.py`, `conciliacion_export_service.py`, `.gitignore` | Medio |
 | Riesgo confirmado | `backend/alembic/env.py` imprime tablas al ejecutar Alembic | `print("ALEMBIC TABLES:", ...)` | Bajo |
@@ -415,7 +446,7 @@ La ejecución real de Transformación Excel no fue encontrada en el código insp
 | Hipótesis técnica | La DB local podría diferir en columnas aunque tenga las tablas | Solo se inspeccionaron nombres de tablas aplicadas | Medio |
 | Hipótesis técnica | Reglas de multi-cliente no están aplicadas de forma homogénea en todos los endpoints | Algunos servicios validan `cliente_id`, otros endpoints CRUD básicos no muestran filtro por cliente | Medio |
 | Recomendación | Antes de cambiar modelos, decidir si se retoma Alembic o se mantiene `create_all` temporalmente | Estado actual de migraciones y scripts | Alta prioridad técnica |
-| Recomendación | Antes de ampliar conciliación o transformación, agregar pruebas focalizadas | Motor de conciliación y config de transformación tienen lógica de negocio significativa | Alta prioridad técnica |
+| Recomendación | Configurar y ejecutar periódicamente la suite integral sobre una base terminada en `_test` | `backend/tests/integration/` | Alta prioridad técnica |
 
 ## 15. Protocolo obligatorio para el próximo chat de Codex
 
@@ -478,8 +509,8 @@ La ejecución real de Transformación Excel no fue encontrada en el código insp
 | CRUD clientes/procesos/ejecuciones | Rutas correspondientes en `backend/app/api/routes/` | Endpoints y dependencias verificados | VERIFICADO DIRECTAMENTE | No se hicieron requests HTTP |
 | Archivos y preview | `backend/app/api/routes/archivos.py`, `file_service.py`, `file_preview_service.py` | Upload/list/preview | VERIFICADO DIRECTAMENTE | No se modificaron archivos |
 | Conciliación | `conciliaciones.py`, servicios de conciliación/mapping/revisión/export | Mapping, ejecución, resultados, revisión, export | VERIFICADO DIRECTAMENTE | No se ejecutó conciliación |
-| Transformación Excel | `transformaciones_excel.py`, schemas/servicios de transformación | Inspección y configuración | VERIFICADO DIRECTAMENTE | Ejecución no encontrada |
-| Tests | `rg --files -g '*test*' -g '*spec*' -g '!backend/.venv/**' -g '!backend/storage/**'` | No hay suite; solo sample CSV y archivos con `inspeccion` | NO ENCONTRADO | No se ejecutaron pruebas |
+| Transformación Excel | `transformaciones_excel.py`, schemas y servicios `transformacion_excel_*` | Flujo backend completo y hardening | VERIFICADO DIRECTAMENTE | Frontend pendiente |
+| Tests | `.\\.venv\\Scripts\\python.exe -m unittest discover -s tests -p "test_*.py"` desde `backend/` | 127 pruebas descubiertas; 2 omisiones controladas | VERIFICADO DIRECTAMENTE | Integración sin `TEST_DATABASE_URL`; symlink no permitido por el entorno Windows; no se conectó a desarrollo |
 | TODO/FIXME | `rg -n "TODO|FIXME|PENDIENTE|pass|print\(" -g '!backend/.venv/**' -g '!backend/storage/**'` | Sin TODO/FIXME relevantes; print Alembic observado por lectura directa | VERIFICADO PARCIALMENTE | Búsqueda textual limitada |
 | Datos definidos en modelos | `backend/app/models/*.py`, `Base.metadata` | 7 tablas de dominio definidas | VERIFICADO DIRECTAMENTE | Etiqueta documental: `DEFINIDO EN MODELOS` |
 | Datos verificados en base local | Inspector SQLAlchemy y lectura de `alembic_version` | Tablas presentes; `alembic_version` sin filas | VERIFICADO PARCIALMENTE | Etiqueta documental: `VERIFICADO EN BASE LOCAL`; no compara columnas |

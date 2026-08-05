@@ -441,10 +441,15 @@ def apply_template_to_execution(
     previous_state = ejecucion.estado
     resumen_json = dict(ejecucion.resumen_json or {})
     transformacion_excel = dict(resumen_json.get("transformacion_excel") or {})
+    validation_invalidated = "validacion" in transformacion_excel
     transformacion_excel["configuracion"] = config.model_dump(mode="json")
     transformacion_excel["updated_at"] = now.isoformat()
     transformacion_excel.pop("validacion", None)
     transformacion_excel.pop("generacion", None)
+    if validation_invalidated:
+        transformacion_excel["validation_invalidation_code"] = (
+            "CONFIG_CHANGED_AFTER_VALIDATION"
+        )
     transformacion_excel["plantilla_aplicada"] = {
         "plantilla_id": template_record.id,
         "nombre": template_record.nombre,
@@ -467,6 +472,20 @@ def apply_template_to_execution(
         },
         occurred_at=now,
     )
+    if validation_invalidated:
+        resumen_json = append_transformacion_trace_event(
+            resumen_json,
+            event_type="VALIDATION_INVALIDATED",
+            level="WARNING",
+            message=(
+                "La configuración cambió después de la validación."
+            ),
+            actor_user_id=current_user.id,
+            from_state=previous_state,
+            to_state="CONFIGURADO",
+            metadata={"error_code": "CONFIG_CHANGED_AFTER_VALIDATION"},
+            occurred_at=now,
+        )
 
     ejecucion.resumen_json = resumen_json
     ejecucion.estado = "CONFIGURADO"

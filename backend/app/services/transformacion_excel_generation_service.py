@@ -2,18 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import hashlib
-import json
+import os
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Archivo, EjecucionProceso, Usuario
 from app.schemas.transformacion_excel import TransformacionExcelConfig
-from app.services.file_preview_service import resolve_storage_path
-from app.services.file_service import STORAGE_ROOT, calculate_sha256
+from app.services.file_service import STORAGE_ROOT
 from app.services.transformacion_excel_config_service import (
     TransformacionExcelConfigError,
     collect_referenced_source_columns,
@@ -25,6 +24,9 @@ from app.services.transformacion_excel_config_service import (
 from app.services.transformacion_excel_pipeline import (
     run_transformacion_pipeline,
 )
+from app.services.transformacion_excel_inspeccion_service import (
+    TransformacionExcelInspeccionError,
+)
 from app.services.transformacion_excel_validation_service import (
     build_pipeline_response,
     get_persisted_config,
@@ -33,6 +35,14 @@ from app.services.transformacion_excel_validation_service import (
 )
 from app.services.transformacion_excel_trace_service import (
     append_transformacion_trace_event,
+)
+from app.services.transformacion_excel_security_service import (
+    TransformacionExcelSecurityError,
+    calculate_file_sha256,
+    calculate_transformacion_config_checksum,
+    current_transformacion_limits,
+    resolve_storage_path_safely,
+    validate_source_file_security,
 )
 from app.services.transformacion_excel_xlsx_writer import (
     TransformacionExcelXlsxWriterError,
@@ -110,27 +120,43 @@ def resolve_valid_output_path(
     archivo: Archivo,
     ejecucion_id: int,
 ) -> Path | None:
-    path = resolve_storage_path(archivo.ruta_storage).resolve()
+    try:
+        path = resolve_storage_path_safely(archivo.ruta_storage, STORAGE_ROOT)
+    except TransformacionExcelSecurityError as exc:
+        raise TransformacionExcelGenerationError(
+            str(exc),
+            exc.status_code,
+        ) from exc
     allowed_directory = processed_execution_directory(ejecucion_id).resolve()
     if not path.is_relative_to(allowed_directory):
-        return None
-    if not path.exists() or not path.is_file() or path.stat().st_size <= 0:
-        return None
-    if archivo.size_bytes is not None and path.stat().st_size != archivo.size_bytes:
-        return None
-    if archivo.checksum is not None and calculate_sha256(path) != archivo.checksum:
+        raise TransformacionExcelGenerationError(
+            "UNSAFE_STORAGE_PATH: La ubicación almacenada no es segura.",
+        )
+    try:
+        if (
+            (archivo.extension or "").casefold() != OUTPUT_EXTENSION
+            or not path.exists()
+            or not path.is_file()
+            or path.stat().st_size <= 0
+        ):
+            return None
+        if (
+            archivo.size_bytes is not None
+            and path.stat().st_size != archivo.size_bytes
+        ):
+            return None
+        if (
+            archivo.checksum is not None
+            and calculate_file_sha256(path) != archivo.checksum
+        ):
+            return None
+    except OSError:
         return None
     return path
 
 
 def calculate_config_checksum(config: TransformacionExcelConfig) -> str:
-    serialized = json.dumps(
-        config.model_dump(mode="json"),
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
-    return hashlib.sha256(serialized).hexdigest()
+    return calculate_transformacion_config_checksum(config)
 
 
 def parse_generated_at(value: Any) -> datetime | None:
@@ -168,7 +194,7 @@ def build_generation_response(
         or archivo.uploaded_at
         or datetime.now(timezone.utc)
     )
-    checksum = archivo.checksum or calculate_sha256(path)
+    checksum = archivo.checksum or calculate_file_sha256(path)
     size_bytes = path.stat().st_size
     return {
         "ejecucion_id": ejecucion.id,
@@ -217,6 +243,125 @@ def validate_output_config(config: TransformacionExcelConfig) -> None:
         validate_sheet_name(config.output.sheet_name)
     except TransformacionExcelXlsxWriterError as exc:
         raise TransformacionExcelGenerationError(str(exc)) from exc
+
+
+def invalidate_saved_validation(
+    db: Session,
+    ejecucion: EjecucionProceso,
+    code: str,
+    actor_user_id: int | None,
+) -> None:
+    messages = {
+        "SOURCE_CHANGED_AFTER_VALIDATION": (
+            "El archivo fuente cambió después de la validación."
+        ),
+        "CONFIG_CHANGED_AFTER_VALIDATION": (
+            "La configuración cambió después de la validación."
+        ),
+        "VALIDATION_INTEGRITY_DATA_MISSING": (
+            "La validación no contiene datos de integridad vigentes."
+        ),
+    }
+    previous_state = ejecucion.estado
+    occurred_at = datetime.now(timezone.utc)
+    resumen_json = dict(ejecucion.resumen_json or {})
+    transformacion = dict(resumen_json.get("transformacion_excel") or {})
+    transformacion.pop("generacion", None)
+    transformacion["validation_invalidation_code"] = code
+    resumen_json["transformacion_excel"] = transformacion
+    ejecucion.resumen_json = append_transformacion_trace_event(
+        resumen_json,
+        event_type="VALIDATION_INVALIDATED",
+        level="WARNING",
+        message=messages[code],
+        actor_user_id=actor_user_id,
+        from_state=previous_state,
+        to_state="CONFIGURADO",
+        metadata={"error_code": code},
+        occurred_at=occurred_at,
+    )
+    ejecucion.estado = "CONFIGURADO"
+    ejecucion.error_message = None
+    ejecucion.finished_at = None
+    db.commit()
+    raise TransformacionExcelGenerationConflictError(
+        f"{code}: {messages[code]}",
+    )
+
+
+def validate_saved_validation_integrity(
+    db: Session,
+    ejecucion: EjecucionProceso,
+    config: TransformacionExcelConfig,
+    source_path: Path,
+    actor_user_id: int | None,
+    *,
+    source_checksum: str | None = None,
+) -> str:
+    transformacion = (ejecucion.resumen_json or {}).get(
+        "transformacion_excel",
+    ) or {}
+    validation = transformacion.get("validacion")
+    required_fields = (
+        "source_checksum",
+        "config_checksum",
+        "source_size_bytes",
+        "limits",
+    )
+    if (
+        not isinstance(validation, dict)
+        or validation.get("valid") is not True
+        or any(validation.get(field) is None for field in required_fields)
+    ):
+        invalidate_saved_validation(
+            db,
+            ejecucion,
+            "VALIDATION_INTEGRITY_DATA_MISSING",
+            actor_user_id,
+        )
+
+    actual_config_checksum = calculate_transformacion_config_checksum(config)
+    if validation.get("config_checksum") != actual_config_checksum:
+        invalidate_saved_validation(
+            db,
+            ejecucion,
+            "CONFIG_CHANGED_AFTER_VALIDATION",
+            actor_user_id,
+        )
+
+    actual_source_checksum = source_checksum or calculate_file_sha256(source_path)
+    if validation.get("source_checksum") != actual_source_checksum:
+        invalidate_saved_validation(
+            db,
+            ejecucion,
+            "SOURCE_CHANGED_AFTER_VALIDATION",
+            actor_user_id,
+        )
+    return actual_source_checksum
+
+
+def raise_previous_validation_invalidation(
+    ejecucion: EjecucionProceso,
+) -> None:
+    transformacion = (ejecucion.resumen_json or {}).get(
+        "transformacion_excel",
+    ) or {}
+    code = transformacion.get("validation_invalidation_code")
+    messages = {
+        "SOURCE_CHANGED_AFTER_VALIDATION": (
+            "El archivo fuente cambió después de la validación."
+        ),
+        "CONFIG_CHANGED_AFTER_VALIDATION": (
+            "La configuración cambió después de la validación."
+        ),
+        "VALIDATION_INTEGRITY_DATA_MISSING": (
+            "La validación no contiene datos de integridad vigentes."
+        ),
+    }
+    if ejecucion.estado == "CONFIGURADO" and code in messages:
+        raise TransformacionExcelGenerationConflictError(
+            f"{code}: {messages[code]}",
+        )
 
 
 def mark_generation_as_technical_error(
@@ -285,17 +430,27 @@ def upsert_output_record(
     obsolete_paths: list[Path] = []
 
     if records:
-        previous_path = resolve_storage_path(archivo.ruta_storage).resolve()
-        if previous_path != output_path.resolve():
+        try:
+            previous_path = resolve_storage_path_safely(
+                archivo.ruta_storage,
+                STORAGE_ROOT,
+            )
+        except TransformacionExcelSecurityError:
+            previous_path = None
+        if previous_path is not None and previous_path != output_path.resolve():
             obsolete_paths.append(previous_path)
     else:
         db.add(archivo)
 
     for duplicate_record in records[1:]:
-        duplicate_path = resolve_storage_path(
-            duplicate_record.ruta_storage,
-        ).resolve()
-        if duplicate_path != output_path.resolve():
+        try:
+            duplicate_path = resolve_storage_path_safely(
+                duplicate_record.ruta_storage,
+                STORAGE_ROOT,
+            )
+        except TransformacionExcelSecurityError:
+            duplicate_path = None
+        if duplicate_path is not None and duplicate_path != output_path.resolve():
             obsolete_paths.append(duplicate_path)
         db.delete(duplicate_record)
 
@@ -315,19 +470,16 @@ def upsert_output_record(
 def persist_generation_result(
     db: Session,
     ejecucion: EjecucionProceso,
-    source_file: Archivo,
     config: TransformacionExcelConfig,
     output_path: Path,
     total_rows: int,
     output_columns: list[str],
     generated_at: datetime,
+    source_checksum: str,
     actor_user_id: int | None = None,
 ) -> tuple[Archivo, list[Path]]:
     size_bytes = output_path.stat().st_size
-    output_checksum = calculate_sha256(output_path)
-    source_checksum = source_file.checksum or calculate_sha256(
-        resolve_storage_path(source_file.ruta_storage),
-    )
+    output_checksum = calculate_file_sha256(output_path)
     archivo, obsolete_paths = upsert_output_record(
         db,
         ejecucion.id,
@@ -375,8 +527,6 @@ def persist_generation_result(
     ejecucion.error_message = None
     ejecucion.finished_at = generated_at
     db.commit()
-    db.refresh(archivo)
-    db.refresh(ejecucion)
     return archivo, obsolete_paths
 
 
@@ -390,11 +540,9 @@ def generate_transformacion_result(
         ejecucion_id,
         current_user,
     )
-    db.refresh(ejecucion, with_for_update=True)
-
     config = get_persisted_config(db, ejecucion_id, current_user)
     source_file = get_archivo_or_raise(db, config.source.archivo_id)
-    validate_source_file_for_execution(source_file, ejecucion_id)
+    source_path = validate_source_file_for_execution(source_file, ejecucion_id)
     validate_output_config(config)
 
     records = get_output_records(db, ejecucion_id)
@@ -402,7 +550,7 @@ def generate_transformacion_result(
         existing_path = resolve_valid_output_path(records[0], ejecucion_id)
         if existing_path is not None:
             reused_at = datetime.now(timezone.utc)
-            checksum = records[0].checksum or calculate_sha256(existing_path)
+            checksum = records[0].checksum or calculate_file_sha256(existing_path)
             ejecucion.resumen_json = append_transformacion_trace_event(
                 ejecucion.resumen_json,
                 event_type="GENERATION_REUSED",
@@ -418,7 +566,6 @@ def generate_transformacion_result(
                 occurred_at=reused_at,
             )
             db.commit()
-            db.refresh(ejecucion)
             return build_generation_response(
                 ejecucion,
                 records[0],
@@ -426,7 +573,42 @@ def generate_transformacion_result(
                 reused=True,
             )
 
+    raise_previous_validation_invalidation(ejecucion)
     validate_generation_state(ejecucion)
+    source_checksum = validate_saved_validation_integrity(
+        db,
+        ejecucion,
+        config,
+        source_path,
+        current_user.id,
+    )
+    try:
+        source_dataframe = read_configured_source_dataframe(
+            source_file,
+            config,
+            source_path,
+        )
+    except TransformacionExcelInspeccionError as exc:
+        raise TransformacionExcelGenerationError(
+            str(exc),
+            exc.status_code,
+        ) from exc
+
+    # PostgreSQL serializa aquí el derecho a pasar de VALIDADO a PROCESANDO.
+    # El bloqueo termina en el commit inmediato anterior al trabajo pesado.
+    db.refresh(ejecucion, with_for_update=True)
+    validate_generation_state(ejecucion)
+    config = get_persisted_config(db, ejecucion_id, current_user)
+    validate_output_config(config)
+    validate_saved_validation_integrity(
+        db,
+        ejecucion,
+        config,
+        source_path,
+        current_user.id,
+        source_checksum=source_checksum,
+    )
+
     previous_state = ejecucion.estado
     started_at = datetime.now(timezone.utc)
     ejecucion.resumen_json = append_transformacion_trace_event(
@@ -446,12 +628,23 @@ def generate_transformacion_result(
     db.commit()
 
     output_path: Path | None = None
+    staging_path: Path | None = None
+    backup_path: Path | None = None
     output_existed_before = False
+    generation_persisted = False
     try:
-        source_dataframe = read_configured_source_dataframe(
-            source_file,
-            config,
+        source_size_bytes, source_modified_at = validate_source_file_security(
+            source_path,
+            source_file.extension or "",
         )
+        current_source_checksum = calculate_file_sha256(source_path)
+        if current_source_checksum != source_checksum:
+            invalidate_saved_validation(
+                db,
+                ejecucion,
+                "SOURCE_CHANGED_AFTER_VALIDATION",
+                current_user.id,
+            )
         validate_referenced_source_columns(
             collect_referenced_source_columns(config),
             [str(column) for column in source_dataframe.columns],
@@ -465,6 +658,15 @@ def generate_transformacion_result(
                 validation_payload,
                 datetime.now(timezone.utc),
                 actor_user_id=current_user.id,
+                integrity={
+                    "source_checksum": current_source_checksum,
+                    "config_checksum": (
+                        calculate_transformacion_config_checksum(config)
+                    ),
+                    "source_size_bytes": source_size_bytes,
+                    "source_modified_at": source_modified_at,
+                    "limits": current_transformacion_limits(),
+                },
             )
             raise TransformacionExcelGenerationConflictError(
                 "La transformación contiene errores y debe validarse nuevamente.",
@@ -476,24 +678,43 @@ def generate_transformacion_result(
             config.output.file_name,
         )
         output_existed_before = output_path.exists()
+        staging_path = output_directory / f".{uuid4().hex}.pending.xlsx"
         write_transformacion_xlsx(
             result.final_dataframe,
             config,
-            output_path,
+            staging_path,
         )
+        if calculate_file_sha256(source_path) != source_checksum:
+            remove_file_if_present(staging_path)
+            staging_path = None
+            invalidate_saved_validation(
+                db,
+                ejecucion,
+                "SOURCE_CHANGED_AFTER_VALIDATION",
+                current_user.id,
+            )
+
+        if output_existed_before:
+            backup_path = output_directory / f".{uuid4().hex}.backup.xlsx"
+            os.replace(output_path, backup_path)
+        os.replace(staging_path, output_path)
+        staging_path = None
 
         generated_at = datetime.now(timezone.utc)
         archivo, obsolete_paths = persist_generation_result(
             db,
             ejecucion,
-            source_file,
             config,
             output_path,
             len(result.final_dataframe),
             result.output_columns,
             generated_at,
+            source_checksum,
             actor_user_id=current_user.id,
         )
+        generation_persisted = True
+        remove_file_if_present(backup_path)
+        backup_path = None
         for obsolete_path in obsolete_paths:
             allowed_directory = processed_execution_directory(
                 ejecucion_id,
@@ -513,8 +734,21 @@ def generate_transformacion_result(
     ):
         raise
     except Exception as exc:
-        if output_path is not None and not output_existed_before:
+        if generation_persisted:
+            raise TransformacionExcelGenerationTechnicalError(
+                GENERATION_TECHNICAL_ERROR_MESSAGE,
+            ) from exc
+        remove_file_if_present(staging_path)
+        if backup_path is not None and backup_path.exists():
             remove_file_if_present(output_path)
+            try:
+                os.replace(backup_path, output_path)
+                backup_path = None
+            except OSError:
+                pass
+        elif output_path is not None and not output_existed_before:
+            remove_file_if_present(output_path)
+        remove_file_if_present(backup_path)
         mark_generation_as_technical_error(
             db,
             ejecucion_id,

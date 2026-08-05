@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
@@ -80,14 +81,14 @@ def get_archivo_or_raise(db: Session, archivo_id: int) -> Archivo:
 def validate_source_file_for_execution(
     archivo: Archivo,
     ejecucion_id: int,
-) -> None:
+) -> Path:
     if archivo.ejecucion_id != ejecucion_id:
         raise TransformacionExcelConfigError(
             "El archivo fuente no pertenece a la ejecución indicada",
         )
     try:
         normalize_extension(archivo.extension)
-        resolve_existing_storage_path(archivo)
+        return resolve_existing_storage_path(archivo)
     except TransformacionExcelInspeccionError as exc:
         raise TransformacionExcelConfigError(str(exc), exc.status_code) from exc
 
@@ -198,11 +199,24 @@ def save_transformacion_config(
     resumen_json = dict(ejecucion.resumen_json or {})
     transformacion_excel = dict(resumen_json.get("transformacion_excel") or {})
     replaced_existing_configuration = "configuracion" in transformacion_excel
-    transformacion_excel["configuracion"] = config.model_dump(mode="json")
+    config_payload = config.model_dump(mode="json")
+    configuration_changed = (
+        transformacion_excel.get("configuracion") != config_payload
+    )
+    validation_invalidated = (
+        configuration_changed and "validacion" in transformacion_excel
+    )
+    transformacion_excel["configuracion"] = config_payload
     transformacion_excel["updated_at"] = now.isoformat()
-    transformacion_excel.pop("validacion", None)
-    transformacion_excel.pop("generacion", None)
+    if configuration_changed:
+        transformacion_excel.pop("validacion", None)
+        transformacion_excel.pop("generacion", None)
+    if validation_invalidated:
+        transformacion_excel["validation_invalidation_code"] = (
+            "CONFIG_CHANGED_AFTER_VALIDATION"
+        )
     resumen_json["transformacion_excel"] = transformacion_excel
+    next_state = "CONFIGURADO" if configuration_changed else previous_state
     resumen_json = append_transformacion_trace_event(
         resumen_json,
         event_type="CONFIGURATION_SAVED",
@@ -210,18 +224,33 @@ def save_transformacion_config(
         message="Se guardó la configuración de transformación.",
         actor_user_id=current_user.id,
         from_state=previous_state,
-        to_state="CONFIGURADO",
+        to_state=next_state,
         metadata={
             "archivo_id": config.source.archivo_id,
             "output_columns_count": len(config.output_columns),
             "filters_count": len(config.rows.filters),
             "replaced_existing_configuration": replaced_existing_configuration,
+            "configuration_changed": configuration_changed,
         },
         occurred_at=now,
     )
+    if validation_invalidated:
+        resumen_json = append_transformacion_trace_event(
+            resumen_json,
+            event_type="VALIDATION_INVALIDATED",
+            level="WARNING",
+            message=(
+                "La configuración cambió después de la validación."
+            ),
+            actor_user_id=current_user.id,
+            from_state=previous_state,
+            to_state="CONFIGURADO",
+            metadata={"error_code": "CONFIG_CHANGED_AFTER_VALIDATION"},
+            occurred_at=now,
+        )
 
     ejecucion.resumen_json = resumen_json
-    ejecucion.estado = "CONFIGURADO"
+    ejecucion.estado = next_state
     ejecucion.error_message = None
 
     db.commit()

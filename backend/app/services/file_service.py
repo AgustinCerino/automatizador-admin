@@ -1,10 +1,13 @@
 from dataclasses import dataclass
-import hashlib
 from pathlib import Path
 import shutil
 from uuid import uuid4
 
 from fastapi import UploadFile
+
+from app.services.transformacion_excel_security_service import (
+    calculate_file_sha256,
+)
 
 
 ALLOWED_EXTENSIONS = {".xlsx", ".xls", ".csv", ".pdf"}
@@ -44,11 +47,7 @@ def generate_safe_filename(original_filename: str) -> str:
 
 
 def calculate_sha256(path: Path) -> str:
-    sha256 = hashlib.sha256()
-    with path.open("rb") as file:
-        for chunk in iter(lambda: file.read(1024 * 1024), b""):
-            sha256.update(chunk)
-    return sha256.hexdigest()
+    return calculate_file_sha256(path)
 
 
 def save_upload_file(upload_file: UploadFile, ejecucion_id: int) -> StoredFile:

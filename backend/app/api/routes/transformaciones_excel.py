@@ -105,6 +105,7 @@ def inspect_archivo_structure(
             sheet_name=sheet_name,
             header_row=header_row,
             limit=limit,
+            current_user=current_user,
         )
     except TransformacionExcelInspeccionError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
@@ -394,4 +395,8 @@ def download_transformacion_result(
         path=download.path,
         filename=download.filename,
         media_type=download.media_type,
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-store",
+        },
     )

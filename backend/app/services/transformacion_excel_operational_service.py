@@ -1,5 +1,5 @@
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import re
 from typing import Any, Iterable
 
@@ -8,12 +8,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Archivo, EjecucionProceso, Usuario
+from app.core.config import settings
 from app.schemas.transformacion_excel import TransformacionExcelConfig
 from app.schemas.transformacion_excel_operacion import (
     TransformacionExcelOperationalIssueRead,
     TransformacionExcelOperationalSummaryRead,
 )
-from app.services.file_preview_service import resolve_storage_path
+from app.services.file_service import STORAGE_ROOT
 from app.services.transformacion_excel_config_service import (
     get_transformacion_ejecucion_or_raise,
 )
@@ -23,6 +24,10 @@ from app.services.transformacion_excel_generation_service import (
 from app.services.transformacion_excel_trace_service import (
     MAX_TRACE_EVENTS,
     get_transformacion_trace_events,
+)
+from app.services.transformacion_excel_security_service import (
+    TransformacionExcelSecurityError,
+    resolve_storage_path_safely,
 )
 
 
@@ -220,7 +225,7 @@ def determine_transformacion_action_required(
     if estado in {"CANCELADO", "APROBADO", "RECHAZADO"}:
         return "NONE"
     if estado == "PROCESANDO":
-        return "WAIT"
+        return "REVIEW_ERROR" if has_blocking_issues else "WAIT"
     if estado == "ERROR":
         return "REVIEW_ERROR"
     if not has_configuration:
@@ -374,8 +379,11 @@ def build_transformacion_operational_summary(
     *,
     source_record: Archivo | None = None,
     source_file_exists: bool = False,
+    source_path_unsafe: bool = False,
     output_record: Archivo | None = None,
     output_file_exists: bool = False,
+    output_path_unsafe: bool = False,
+    now: datetime | None = None,
 ) -> TransformacionExcelOperationalSummaryRead:
     original_summary = ejecucion.resumen_json
     resumen = deepcopy(original_summary) if isinstance(original_summary, dict) else {}
@@ -393,6 +401,42 @@ def build_transformacion_operational_summary(
     )
 
     raw_issues = validation_issues_from_summary(validation_raw)
+    all_events = get_transformacion_trace_events(
+        resumen,
+        limit=MAX_TRACE_EVENTS,
+    )
+    if ejecucion.estado == "PROCESANDO":
+        processing_started_at = next(
+            (
+                parse_operational_datetime(event.get("occurred_at"))
+                for event in all_events
+                if event.get("event_type") == "GENERATION_STARTED"
+            ),
+            None,
+        ) or parse_operational_datetime(getattr(ejecucion, "started_at", None))
+        current_time = now or datetime.now(timezone.utc)
+        if current_time.tzinfo is None or current_time.utcoffset() is None:
+            current_time = current_time.replace(tzinfo=timezone.utc)
+        if (
+            processing_started_at is not None
+            and processing_started_at
+            < current_time
+            - timedelta(
+                minutes=settings.transformacion_excel_stale_processing_minutes,
+            )
+        ):
+            raw_issues.append(
+                _issue_dict(
+                    severity="ERROR",
+                    origin="GENERATION",
+                    code="STALE_PROCESSING_STATE",
+                    message=(
+                        "La generación permanece en procesamiento por encima "
+                        "del umbral operativo."
+                    ),
+                    blocking=True,
+                ),
+            )
     if ejecucion.error_message:
         raw_issues.append(
             _issue_dict(
@@ -436,7 +480,17 @@ def build_transformacion_operational_summary(
                 "sheet_name": config.source.sheet_name,
                 "header_row": config.source.header_row,
             }
-            if not source_file_exists:
+            if source_path_unsafe:
+                raw_issues.append(
+                    _issue_dict(
+                        severity="ERROR",
+                        origin="SOURCE_FILE",
+                        code="UNSAFE_STORAGE_PATH",
+                        message="La ubicación almacenada del archivo fuente no es segura.",
+                        blocking=True,
+                    ),
+                )
+            elif not source_file_exists:
                 raw_issues.append(
                     _issue_dict(
                         severity="ERROR",
@@ -457,7 +511,17 @@ def build_transformacion_operational_summary(
                 blocking=False,
             ),
         )
-    if output_record is not None and not output_file_exists:
+    if output_record is not None and output_path_unsafe:
+        raw_issues.append(
+            _issue_dict(
+                severity="ERROR",
+                origin="OUTPUT_FILE",
+                code="UNSAFE_STORAGE_PATH",
+                message="La ubicación almacenada del archivo de salida no es segura.",
+                blocking=False,
+            ),
+        )
+    elif output_record is not None and not output_file_exists:
         raw_issues.append(
             _issue_dict(
                 severity="ERROR",
@@ -496,7 +560,7 @@ def build_transformacion_operational_summary(
         output_file_exists,
     )
 
-    recent_events = get_transformacion_trace_events(resumen, limit=1)
+    recent_events = all_events[:1]
     latest_event_at = (
         parse_operational_datetime(recent_events[0].get("occurred_at"))
         if recent_events
@@ -544,14 +608,16 @@ def build_transformacion_operational_summary(
     )
 
 
-def _record_file_exists(record: Archivo | None) -> bool:
+def _record_file_status(record: Archivo | None) -> tuple[bool, bool]:
     if record is None:
-        return False
+        return False, False
     try:
-        path = resolve_storage_path(record.ruta_storage)
-        return path.exists() and path.is_file()
+        path = resolve_storage_path_safely(record.ruta_storage, STORAGE_ROOT)
+        return path.exists() and path.is_file(), False
+    except TransformacionExcelSecurityError:
+        return False, True
     except (OSError, TypeError, ValueError):
-        return False
+        return False, False
 
 
 def _find_output_record(
@@ -613,12 +679,16 @@ def get_transformacion_operational_summary(
     if source_record is not None and source_record.ejecucion_id != ejecucion.id:
         source_record = None
     output_record = _find_output_record(db, ejecucion, transformacion)
+    source_file_exists, source_path_unsafe = _record_file_status(source_record)
+    output_file_exists, output_path_unsafe = _record_file_status(output_record)
     return build_transformacion_operational_summary(
         ejecucion,
         source_record=source_record,
-        source_file_exists=_record_file_exists(source_record),
+        source_file_exists=source_file_exists,
+        source_path_unsafe=source_path_unsafe,
         output_record=output_record,
-        output_file_exists=_record_file_exists(output_record),
+        output_file_exists=output_file_exists,
+        output_path_unsafe=output_path_unsafe,
     )
 
 

@@ -516,6 +516,32 @@ class TransformacionExcelOperationalCompatibilityTests(unittest.TestCase):
         serialized = json.dumps(result, allow_nan=False)
         self.assertIn("CONFIGURATION_SAVED", serialized)
 
+    def test_39_stale_processing_requires_error_review(self) -> None:
+        resumen = append_event(
+            {
+                "transformacion_excel": {
+                    "configuracion": execution_config(),
+                },
+            },
+            event_type="GENERATION_STARTED",
+            occurred_at=NOW - timedelta(minutes=31),
+        )
+        summary = build_transformacion_operational_summary(
+            build_execution(estado="PROCESANDO", resumen_json=resumen),
+            source_record=source_record(),
+            source_file_exists=True,
+            now=NOW,
+        )
+        self.assertEqual(summary.action_required, "REVIEW_ERROR")
+        issue = next(
+            item
+            for item in summary.issues
+            if item.code == "STALE_PROCESSING_STATE"
+        )
+        self.assertEqual(issue.origin, "GENERATION")
+        self.assertEqual(issue.severity, "ERROR")
+        self.assertTrue(issue.blocking)
+
 
 if __name__ == "__main__":
     unittest.main()

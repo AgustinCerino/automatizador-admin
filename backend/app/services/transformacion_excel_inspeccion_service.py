@@ -6,8 +6,15 @@ import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Archivo
-from app.services.file_preview_service import resolve_storage_path, serialize_value
+from app.models import Archivo, Usuario
+from app.services.file_preview_service import serialize_value
+from app.services.file_service import STORAGE_ROOT
+from app.services.transformacion_excel_security_service import (
+    TransformacionExcelSecurityError,
+    resolve_storage_path_safely,
+    validate_dataframe_dimensions,
+    validate_source_file_security,
+)
 
 
 SUPPORTED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
@@ -29,6 +36,11 @@ BOOLEAN_TEXT_VALUES = {
 class TransformacionExcelInspeccionError(Exception):
     status_code = 400
 
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        if status_code is not None:
+            self.status_code = status_code
+
 
 class TransformacionExcelInspeccionNotFoundError(
     TransformacionExcelInspeccionError,
@@ -36,12 +48,29 @@ class TransformacionExcelInspeccionNotFoundError(
     status_code = 404
 
 
-def get_archivo(db: Session, archivo_id: int) -> Archivo:
+class TransformacionExcelInspeccionForbiddenError(
+    TransformacionExcelInspeccionError,
+):
+    status_code = 403
+
+
+def get_archivo(
+    db: Session,
+    archivo_id: int,
+    current_user: Usuario | None = None,
+) -> Archivo:
     archivo = db.execute(
         select(Archivo).where(Archivo.id == archivo_id),
     ).scalar_one_or_none()
     if archivo is None:
         raise TransformacionExcelInspeccionNotFoundError("Archivo no encontrado")
+    if (
+        current_user is not None
+        and archivo.ejecucion.proceso.cliente_id != current_user.cliente_id
+    ):
+        raise TransformacionExcelInspeccionForbiddenError(
+            "El archivo pertenece a otro cliente",
+        )
     return archivo
 
 
@@ -56,12 +85,17 @@ def normalize_extension(extension: str | None) -> str:
 
 
 def resolve_existing_storage_path(archivo: Archivo) -> Path:
-    path = resolve_storage_path(archivo.ruta_storage)
-    if not path.exists() or not path.is_file():
-        raise TransformacionExcelInspeccionNotFoundError(
-            "El archivo físico no existe",
-        )
-    return path
+    try:
+        path = resolve_storage_path_safely(archivo.ruta_storage, STORAGE_ROOT)
+        validate_source_file_security(path, archivo.extension or "")
+        return path
+    except TransformacionExcelSecurityError as exc:
+        if exc.status_code == 404:
+            raise TransformacionExcelInspeccionNotFoundError(str(exc)) from exc
+        raise TransformacionExcelInspeccionError(
+            str(exc),
+            exc.status_code,
+        ) from exc
 
 
 def get_available_sheets(path: Path, extension: str) -> list[str]:
@@ -71,7 +105,7 @@ def get_available_sheets(path: Path, extension: str) -> list[str]:
         return list(pd.ExcelFile(path).sheet_names)
     except Exception as exc:
         raise TransformacionExcelInspeccionError(
-            f"No se pudieron leer las hojas del archivo: {exc}",
+            "No se pudieron leer las hojas del archivo.",
         ) from exc
 
 
@@ -123,7 +157,7 @@ def read_csv_with_encoding(path: Path, header_row: int) -> pd.DataFrame:
             continue
 
     raise TransformacionExcelInspeccionError(
-        f"No se pudo leer el archivo CSV: {last_error}",
+        "No se pudo leer el archivo CSV.",
     )
 
 
@@ -161,7 +195,7 @@ def read_csv_headers(path: Path, header_row: int) -> list[str]:
             continue
 
     raise TransformacionExcelInspeccionError(
-        f"No se pudieron leer encabezados del CSV: {last_error}",
+        "No se pudieron leer encabezados del CSV.",
     )
 
 
@@ -178,11 +212,11 @@ def read_excel_dataframe(
         )
     except ValueError as exc:
         raise TransformacionExcelInspeccionError(
-            f"No se pudo leer la hoja seleccionada: {exc}",
+            "No se pudo leer la hoja seleccionada.",
         ) from exc
     except Exception as exc:
         raise TransformacionExcelInspeccionError(
-            f"No se pudo leer el archivo Excel: {exc}",
+            "No se pudo leer el archivo Excel.",
         ) from exc
 
 
@@ -200,7 +234,7 @@ def read_excel_headers(
         )
     except Exception as exc:
         raise TransformacionExcelInspeccionError(
-            f"No se pudieron leer encabezados del Excel: {exc}",
+            "No se pudieron leer encabezados del Excel.",
         ) from exc
 
     if len(header_df) < header_row:
@@ -237,6 +271,13 @@ def read_source_dataframe(
         raise TransformacionExcelInspeccionError(
             "No se pudieron obtener encabezados con el header_row indicado",
         )
+    try:
+        validate_dataframe_dimensions(df)
+    except TransformacionExcelSecurityError as exc:
+        raise TransformacionExcelInspeccionError(
+            str(exc),
+            exc.status_code,
+        ) from exc
     return df
 
 
@@ -401,8 +442,9 @@ def build_transformacion_excel_structure(
     sheet_name: str | None,
     header_row: int,
     limit: int,
+    current_user: Usuario | None = None,
 ) -> dict[str, Any]:
-    archivo = get_archivo(db, archivo_id)
+    archivo = get_archivo(db, archivo_id, current_user)
     extension = normalize_extension(archivo.extension)
     path = resolve_existing_storage_path(archivo)
     available_sheets = get_available_sheets(path, extension)
