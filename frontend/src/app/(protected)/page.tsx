@@ -1,6 +1,7 @@
 import { ArrowRight, Info } from "lucide-react";
 import Link from "next/link";
 
+import { BackendStatusCard } from "@/features/system/components/backend-status-card";
 import { PageHeader } from "@/components/layout/page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,10 @@ export default function HomePage() {
             );
           })}
         </div>
+      </section>
+
+      <section aria-label="Estado del sistema" className="max-w-xl">
+        <BackendStatusCard />
       </section>
 
       <Alert className="border-information/25 bg-information/5" role="note">
