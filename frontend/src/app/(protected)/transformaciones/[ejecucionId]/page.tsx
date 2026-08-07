@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { TransformationExecutionView } from "@/features/executions/components/transformation-execution-view";
+import { TransformationWorkspace } from "@/features/transformations/components/transformation-workspace";
 import { parsePositiveIntegerParam } from "@/lib/identifiers";
 
 interface TransformationPageProps {
@@ -17,5 +17,5 @@ export default async function TransformationPage({
     notFound();
   }
 
-  return <TransformationExecutionView executionId={executionId} />;
+  return <TransformationWorkspace executionId={executionId} />;
 }

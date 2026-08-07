@@ -16,4 +16,11 @@ export const queryKeys = {
     all: ["system"] as const,
     health: ["system", "health"] as const,
   },
+  transformations: {
+    all: ["transformations"] as const,
+    detail: (executionId: number) =>
+      ["transformations", "detail", executionId] as const,
+    summary: (executionId: number) =>
+      ["transformations", "detail", executionId, "summary"] as const,
+  },
 } as const;

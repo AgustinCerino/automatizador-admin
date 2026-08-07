@@ -40,7 +40,8 @@ Navegador -> BFF de Next.js -> FastAPI
              ├── /api/auth/session   -> /auth/me
              ├── /api/auth/logout    -> borra la cookie local
              ├── /api/backend/procesos
-             └── /api/backend/ejecuciones
+             ├── /api/backend/ejecuciones
+             └── /api/backend/transformaciones/{ejecucionId}/resumen
 ```
 
 - `src/lib/api/client.ts` es el cliente del navegador y sólo acepta rutas internas bajo `/api/`.
@@ -64,7 +65,13 @@ El BFF autenticado incorpora estas rutas explícitas:
 
 Cada handler valida la cookie mediante `/auth/me` una sola vez, deriva `cliente_id` del usuario actual y comprueba la pertenencia del proceso antes de exponer o crear ejecuciones. El navegador no puede seleccionar `cliente_id`, `usuario_id`, rol ni estado. Un `401` de FastAPI elimina la cookie y produce el código controlado `SESSION_EXPIRED`; los Client Components limpian TanStack Query y vuelven a `/login` sin aplicar esa política al formulario de login.
 
-Las ejecuciones de procesos `TRANSFORMACION_EXCEL` navegan a `/transformaciones/{ejecucionId}`. Esa ruta contiene por ahora solamente la verificación vertical, el estado y el contexto real de la ejecución. El workspace de carga, configuración, validación y generación queda pendiente. Otros tipos permanecen en su historial porque todavía no existe una vista funcional genérica autorizada.
+Las ejecuciones de procesos `TRANSFORMACION_EXCEL` navegan a `/transformaciones/{ejecucionId}`. Esa ruta contiene un workspace operativo de solo lectura que consulta `GET /transformaciones-excel/{ejecucion_id}/resumen` mediante el Route Handler autenticado `GET /api/backend/transformaciones/{ejecucionId}/resumen`.
+
+El workspace usa TanStack Query y presenta las cuatro etapas `Archivo`, `Configuración`, `Validación` y `Resultado`. FastAPI sigue siendo la fuente de verdad para `action_required`, las capacidades `can_*`, los problemas operativos y sus contadores; el navegador no interpreta `resumen_json` ni vuelve a calcular permisos. Los estados soportados de próxima acción son `CONFIGURE`, `VALIDATE`, `FIX_ERRORS`, `GENERATE`, `WAIT`, `DOWNLOAD`, `REGENERATE`, `REVIEW_ERROR` y `NONE`.
+
+Mientras `estado_ejecucion` es `PROCESANDO`, la consulta actualiza el resumen aproximadamente cada tres segundos y detiene el polling al recibir cualquier otro estado. La pantalla representa el archivo fuente, la existencia de configuración y plantilla, las métricas de validación, el resultado generado y los issues `ERROR`/`WARNING`, sin exponer rutas de storage ni datos técnicos internos.
+
+Las acciones de carga, configuración, validación y generación se incorporan en los siguientes cortes verticales. Este workspace tampoco activa todavía descarga, edición/aplicación de plantillas ni trazabilidad detallada, aunque el resumen deje disponibles capacidades para esos flujos futuros. Otros tipos de proceso permanecen en su historial porque todavía no existe una vista funcional genérica autorizada.
 
 El backend permite listar ejecuciones sin filtro, pero ese endpoint no aplica aislamiento por cliente. Por ese motivo, la página global `/ejecuciones` ofrece navegación mediante los procesos reales del cliente en lugar de exponer una tabla global insegura.
 
@@ -137,6 +144,15 @@ npm run dev
 4. Para un proceso `TRANSFORMACION_EXCEL`, abrí la ejecución y verificá la ruta `/transformaciones/{ejecucionId}`.
 5. Recargá esa ruta y luego cerrá sesión; las páginas protegidas deben volver a exigir login.
 
+## Prueba manual del workspace de transformación
+
+1. Abrí ejecuciones reales de `TRANSFORMACION_EXCEL` en distintos estados disponibles.
+2. Confirmá que la cabecera, las cuatro etapas y la próxima acción coincidan con el resumen de FastAPI.
+3. Verificá los casos sin archivo/configuración, validado, completado y error cuando existan, sin modificar el backend para fabricar estados.
+4. En una ejecución `PROCESANDO`, comprobá que el resumen se actualice sin recargar la página y que el polling se detenga al cambiar de estado.
+5. Confirmá en la pestaña de red que el navegador sólo consulta `/api/backend/transformaciones/{ejecucionId}/resumen`, nunca el puerto de FastAPI directamente.
+6. Verificá que no aparezcan botones de carga, configuración, validación, generación, descarga o plantillas en este corte.
+
 ## Validación
 
 ```bash
@@ -157,6 +173,7 @@ src/
 ├── components/               # Componentes visuales compartidos
 ├── features/processes/       # API browser, queries y cards de procesos
 ├── features/executions/      # API browser, queries, tabla y creación
+├── features/transformations/ # Resumen operativo, query, presentación y workspace
 ├── features/system/          # Consulta y estado visual del backend
 ├── lib/api/                  # Clientes HTTP, errores y forwarding seguro
 ├── lib/query/                # QueryClient, claves y política de reintentos

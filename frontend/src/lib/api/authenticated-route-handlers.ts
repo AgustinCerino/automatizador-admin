@@ -36,6 +36,8 @@ interface ErrorResult {
 }
 
 type HandlerResult<T> = SuccessResult<T> | ErrorResult;
+type ErrorPayload = (typeof ERROR_PAYLOADS)[keyof typeof ERROR_PAYLOADS];
+type BackendFailureOverrides = Partial<Record<number, ErrorPayload>>;
 
 const PRIVATE_NO_STORE_HEADERS = { "Cache-Control": "private, no-store" };
 
@@ -47,6 +49,10 @@ const ERROR_PAYLOADS = {
   invalidRequest: {
     code: "INVALID_REQUEST",
     message: "La solicitud no es válida.",
+  },
+  incompatibleTransformation: {
+    code: "INCOMPATIBLE_TRANSFORMATION",
+    message: "Esta ejecución no corresponde a una transformación Excel.",
   },
   sessionRequired: {
     code: "UNAUTHENTICATED",
@@ -90,7 +96,7 @@ function jsonResponse(value: unknown, status = 200): Response {
 }
 
 function errorResponse(
-  payload: (typeof ERROR_PAYLOADS)[keyof typeof ERROR_PAYLOADS],
+  payload: ErrorPayload,
   status: number,
 ): Response {
   return jsonResponse(payload, status);
@@ -148,6 +154,7 @@ async function resolveSession(
 async function normalizeBackendFailure(
   response: Response,
   dependencies: AuthenticatedRouteDependencies,
+  overrides: BackendFailureOverrides = {},
 ): Promise<Response> {
   if (response.status === 401) {
     try {
@@ -157,6 +164,11 @@ async function normalizeBackendFailure(
     }
 
     return errorResponse(ERROR_PAYLOADS.sessionExpired, 401);
+  }
+
+  const overriddenPayload = overrides[response.status];
+  if (overriddenPayload) {
+    return errorResponse(overriddenPayload, response.status);
   }
 
   switch (response.status) {
@@ -182,6 +194,7 @@ async function callBackend(
   session: AuthenticatedSession,
   dependencies: AuthenticatedRouteDependencies,
   options: BackendFetchOptions = {},
+  failureOverrides: BackendFailureOverrides = {},
 ): Promise<HandlerResult<unknown>> {
   let response: Response;
 
@@ -207,7 +220,11 @@ async function callBackend(
   if (!response.ok) {
     return {
       ok: false,
-      response: await normalizeBackendFailure(response, dependencies),
+      response: await normalizeBackendFailure(
+        response,
+        dependencies,
+        failureOverrides,
+      ),
     };
   }
 
@@ -494,4 +511,31 @@ export async function handleGetExecutionRequest(
   );
 
   return processResult.ok ? jsonResponse(execution) : processResult.response;
+}
+
+export async function handleGetTransformationSummaryRequest(
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  const executionId = parsePositiveInteger(rawExecutionId);
+
+  if (!executionId) {
+    return invalidIdentifierResponse();
+  }
+
+  const sessionResult = await resolveSession(dependencies);
+
+  if (!sessionResult.ok) {
+    return sessionResult.response;
+  }
+
+  const result = await callBackend(
+    `/transformaciones-excel/${executionId}/resumen`,
+    sessionResult.value,
+    dependencies,
+    { headers: { Accept: "application/json" }, method: "GET" },
+    { 400: ERROR_PAYLOADS.incompatibleTransformation },
+  );
+
+  return result.ok ? jsonResponse(result.value) : result.response;
 }

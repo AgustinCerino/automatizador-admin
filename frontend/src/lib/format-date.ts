@@ -3,7 +3,7 @@ const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("es-AR", {
   timeStyle: "short",
 });
 
-export function formatDateTime(value: string | null): string {
+export function formatDateTime(value: string | null | undefined): string {
   if (!value) {
     return "—";
   }
