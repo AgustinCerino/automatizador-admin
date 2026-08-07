@@ -1,6 +1,6 @@
 # Automatizador Administrativo — Frontend
 
-Interfaz web administrativa para organizar el acceso a procesos, ejecuciones y plantillas. Incluye el shell responsive, el sistema visual y la primera integración HTTP con el estado real del backend.
+Interfaz web administrativa para organizar el acceso a procesos, ejecuciones y plantillas. Incluye el shell responsive, el sistema visual, autenticación con sesión HttpOnly y la integración HTTP con el estado real del backend.
 
 ## Stack
 
@@ -34,15 +34,40 @@ BACKEND_URL=http://127.0.0.1:8000
 El navegador no llama directamente a FastAPI:
 
 ```text
-Navegador -> /api/backend/health (Next.js) -> /health (FastAPI)
+Navegador -> BFF de Next.js -> FastAPI
+             ├── /api/backend/health -> /health
+             ├── /api/auth/login     -> /auth/login y /auth/me
+             ├── /api/auth/session   -> /auth/me
+             └── /api/auth/logout    -> borra la cookie local
 ```
 
 - `src/lib/api/client.ts` es el cliente del navegador y sólo acepta rutas internas bajo `/api/`.
 - `src/lib/api/server.ts` es el cliente marcado como `server-only` que resuelve `BACKEND_URL` y aplica timeout y controles de destino.
-- `src/app/api/backend/health/route.ts` es el único Route Handler BFF actual.
+- Los Route Handlers bajo `src/app/api/` forman el BFF y son el único punto HTTP que usa el navegador.
 - `src/lib/api/errors.ts` normaliza respuestas fallidas a un contrato seguro para la interfaz.
 
-La pantalla de inicio consulta el health real con TanStack Query y muestra si el servidor está conectado. La autenticación y protección de rutas continúan pendientes para la tarea siguiente.
+La pantalla de inicio consulta el health real con TanStack Query y muestra si el servidor está conectado.
+
+## Autenticación y sesión
+
+El formulario público de `/login` envía las credenciales a `POST /api/auth/login`. El BFF las reenvía a `POST /auth/login` de FastAPI, guarda el JWT recibido en una cookie y valida inmediatamente la identidad contra `GET /auth/me`. La respuesta al navegador contiene únicamente el usuario seguro; nunca incluye el token.
+
+La cookie se llama `automatizador_session` y tiene estas propiedades:
+
+- `HttpOnly` y `SameSite=Lax`.
+- `Secure` sólo en producción y `Path=/`.
+- Es una cookie de sesión: no declara `Max-Age` ni `Expires`.
+- No declara `Domain`.
+
+El JWT nunca se guarda en `localStorage`, `sessionStorage` ni estado accesible desde JavaScript. FastAPI sigue siendo la autoridad de autenticación: tanto `GET /api/auth/session` como el layout protegido validan la cookie consultando `/auth/me`, sin decodificar ni confiar localmente en el JWT. `BACKEND_URL` continúa siendo una variable exclusiva del servidor.
+
+El layout `(protected)` exige una sesión válida para `/`, `/procesos`, `/ejecuciones` y `/plantillas`; `/login` y los Route Handlers públicos quedan fuera de ese grupo. El shell recibe el usuario ya validado y muestra su nombre o correo y su rol, sin exponer identificadores internos ni el token. El layout redirige de forma simple a `/login` porque los layouts de Next.js no reciben el pathname solicitado; el retorno opcional sigue disponible para accesos explícitos mediante `/login?next=/ruta` y siempre se sanitiza antes de navegar.
+
+Un token inválido o vencido se trata como una sesión no autenticada; el endpoint de sesión puede borrar la cookie inválida. En cambio, una caída o un error técnico de FastAPI produce un error controlado y no elimina la cookie ni se interpreta como cierre de sesión.
+
+`POST /api/auth/logout` es idempotente y sólo borra la cookie local. El backend no dispone de un endpoint de logout ni de refresh tokens, por lo que no se realiza una llamada adicional a FastAPI. Los endpoints que cambian la cookie validan el origen de la solicitud.
+
+Si falla un intento de login, el formulario conserva el correo para facilitar la corrección y limpia la contraseña. Los errores de credenciales y de indisponibilidad del servidor se muestran sin revelar información sensible.
 
 ## Contrato OpenAPI y tipos
 
@@ -73,6 +98,16 @@ npm run dev
 ```
 
 `npm run test` inicia Vitest en modo interactivo. El servidor de desarrollo queda disponible en `http://localhost:3000` por defecto.
+
+## Prueba manual de autenticación
+
+1. Iniciá FastAPI y luego ejecutá `npm run dev` desde `frontend`.
+2. Abrí una ruta protegida sin sesión y comprobá que redirige a `/login`.
+3. Iniciá sesión con credenciales válidas, recargá la página y verificá que el shell muestre el usuario real.
+4. En las herramientas del navegador, comprobá que `automatizador_session` sea HttpOnly y que las respuestas de login y sesión no contengan el JWT.
+5. Cerrá sesión y confirmá que la cookie desaparezca y que una ruta protegida vuelva a redirigir a `/login`.
+6. Probá una contraseña incorrecta: el correo debe conservarse, la contraseña debe limpiarse y el mensaje no debe indicar si la cuenta existe.
+7. Con una cookie existente, detené FastAPI y recargá una ruta protegida o consultá la sesión: debe aparecer un error técnico controlado y la cookie no debe borrarse.
 
 ## Validación
 

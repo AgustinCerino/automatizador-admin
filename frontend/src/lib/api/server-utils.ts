@@ -180,6 +180,49 @@ export async function executeBackendRequest(
   options: BackendFetchOptions = {},
   fetchImplementation: FetchImplementation = fetch,
 ): Promise<Response> {
+  return executeBackendRequestInternal(
+    rawBackendUrl,
+    backendPath,
+    options,
+    fetchImplementation,
+  );
+}
+
+export async function executeBackendRequestWithToken(
+  rawBackendUrl: string | undefined,
+  backendPath: string,
+  token: string,
+  options: BackendFetchOptions = {},
+  fetchImplementation: FetchImplementation = fetch,
+): Promise<Response> {
+  if (
+    token.length === 0 ||
+    token !== token.trim() ||
+    token.length > 16_384 ||
+    /[\r\n]/.test(token)
+  ) {
+    throw new BackendRequestError(
+      "configuration",
+      "El token de autenticación no es válido.",
+    );
+  }
+
+  return executeBackendRequestInternal(
+    rawBackendUrl,
+    backendPath,
+    options,
+    fetchImplementation,
+    `Bearer ${token}`,
+  );
+}
+
+async function executeBackendRequestInternal(
+  rawBackendUrl: string | undefined,
+  backendPath: string,
+  options: BackendFetchOptions,
+  fetchImplementation: FetchImplementation,
+  trustedAuthorization?: string,
+): Promise<Response> {
   const { signal: callerSignal, timeoutMs = DEFAULT_TIMEOUT_MS, ...init } =
     options;
 
@@ -195,6 +238,10 @@ export async function executeBackendRequest(
 
   for (const header of SENSITIVE_REQUEST_HEADERS) {
     headers.delete(header);
+  }
+
+  if (trustedAuthorization) {
+    headers.set("Authorization", trustedAuthorization);
   }
 
   const controller = new AbortController();

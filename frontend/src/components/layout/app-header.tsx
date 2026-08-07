@@ -1,12 +1,18 @@
 "use client";
 
-import { ChevronRight, CircleUserRound } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { usePathname } from "next/navigation";
 
 import { MobileNavigation } from "@/components/layout/mobile-navigation";
+import { UserMenu } from "@/features/auth/components/user-menu";
+import type { CurrentUser } from "@/features/auth/types";
 import { getNavigationItem } from "@/lib/navigation";
 
-export function AppHeader() {
+interface AppHeaderProps {
+  user: CurrentUser;
+}
+
+export function AppHeader({ user }: AppHeaderProps) {
   const pathname = usePathname();
   const currentItem = getNavigationItem(pathname);
 
@@ -35,13 +41,7 @@ export function AppHeader() {
           </ol>
         </nav>
 
-        <div
-          aria-label="Área de sesión reservada"
-          className="hidden shrink-0 items-center gap-2 rounded-lg border bg-muted/40 px-3 py-1.5 text-sm text-muted-foreground sm:flex"
-        >
-          <CircleUserRound aria-hidden="true" className="size-4" />
-          <span>Sesión</span>
-        </div>
+        <UserMenu user={user} />
       </div>
     </header>
   );

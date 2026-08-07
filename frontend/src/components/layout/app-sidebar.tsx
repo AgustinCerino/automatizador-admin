@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleUserRound, Workflow } from "lucide-react";
+import { Workflow } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -75,24 +75,6 @@ export function AppSidebar() {
           })}
         </ul>
       </nav>
-
-      <div className="m-3 rounded-lg border border-sidebar-border bg-muted/50 p-3">
-        <div
-          aria-label="Área de sesión reservada"
-          className="flex items-center gap-3"
-        >
-          <CircleUserRound
-            aria-hidden="true"
-            className="size-5 shrink-0 text-muted-foreground"
-          />
-          <div className="min-w-0">
-            <p className="text-sm font-medium">Sesión</p>
-            <p className="truncate text-xs text-muted-foreground">
-              Disponible próximamente
-            </p>
-          </div>
-        </div>
-      </div>
     </aside>
   );
 }

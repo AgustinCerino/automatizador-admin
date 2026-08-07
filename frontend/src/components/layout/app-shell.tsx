@@ -2,12 +2,14 @@ import type { ReactNode } from "react";
 
 import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebar } from "@/components/layout/app-sidebar";
+import type { CurrentUser } from "@/features/auth/types";
 
 interface AppShellProps {
   children: ReactNode;
+  user: CurrentUser;
 }
 
-export function AppShell({ children }: AppShellProps) {
+export function AppShell({ children, user }: AppShellProps) {
   return (
     <div className="min-h-svh lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
       <a
@@ -18,7 +20,7 @@ export function AppShell({ children }: AppShellProps) {
       </a>
       <AppSidebar />
       <div className="min-w-0">
-        <AppHeader />
+        <AppHeader user={user} />
         <main
           className="min-h-[calc(100svh-4rem)]"
           id="contenido-principal"

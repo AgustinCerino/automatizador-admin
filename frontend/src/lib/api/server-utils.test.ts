@@ -5,6 +5,7 @@ import {
   BackendRequestError,
   createBackendRequestUrl,
   executeBackendRequest,
+  executeBackendRequestWithToken,
   forwardBackendResponse,
   getBackendBaseUrl,
   type FetchImplementation,
@@ -244,6 +245,64 @@ describe("executeBackendRequest", () => {
       ),
     ).rejects.toMatchObject({ kind: "timeout" });
   });
+});
+
+describe("executeBackendRequestWithToken", () => {
+  it("impone el Bearer confiable, conserva headers permitidos y fuerza no-store", async () => {
+    const fetchImplementation = vi
+      .fn<FetchImplementation>()
+      .mockResolvedValue(new Response("ok"));
+
+    await executeBackendRequestWithToken(
+      "http://backend.test:8000",
+      "/auth/me",
+      "trusted.jwt.token",
+      {
+        cache: "force-cache",
+        headers: {
+          Authorization: "Bearer token-controlado-por-caller",
+          Cookie: "session=no-debe-salir",
+          "X-Request-Id": "request-1",
+        },
+      },
+      fetchImplementation,
+    );
+
+    expect(fetchImplementation).toHaveBeenCalledOnce();
+    const [url, init] = fetchImplementation.mock.calls[0];
+    const headers = new Headers(init?.headers);
+
+    expect(url.toString()).toBe("http://backend.test:8000/auth/me");
+    expect(init?.cache).toBe("no-store");
+    expect(init?.redirect).toBe("manual");
+    expect(headers.get("authorization")).toBe("Bearer trusted.jwt.token");
+    expect(headers.get("x-request-id")).toBe("request-1");
+    expect(headers.has("cookie")).toBe(false);
+    expect(headers.get("authorization")).not.toContain(
+      "token-controlado-por-caller",
+    );
+  });
+
+  it.each(["", " token", "token ", "token\r\ninyectado"])(
+    "rechaza el token no permitido %# sin invocar fetch",
+    async (token) => {
+      const fetchImplementation = vi
+        .fn<FetchImplementation>()
+        .mockResolvedValue(new Response("ok"));
+
+      await expect(
+        executeBackendRequestWithToken(
+          "http://backend.test",
+          "/auth/me",
+          token,
+          {},
+          fetchImplementation,
+        ),
+      ).rejects.toMatchObject({ kind: "configuration" });
+
+      expect(fetchImplementation).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("handleHealthRequest", () => {
