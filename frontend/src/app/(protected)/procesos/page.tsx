@@ -1,7 +1,5 @@
-import { Workflow } from "lucide-react";
-
-import { EmptyState } from "@/components/feedback/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
+import { ProcessList } from "@/features/processes/components/process-list";
 
 export default function ProcessesPage() {
   return (
@@ -11,15 +9,11 @@ export default function ProcessesPage() {
           { label: "Inicio", href: "/" },
           { label: "Procesos" },
         ]}
-        description="Este espacio reunirá la definición y organización de los procesos administrativos."
+        description="Seleccioná un proceso para comenzar o continuar una operación."
         title="Procesos"
       />
 
-      <EmptyState
-        description="Los procesos estarán disponibles cuando se incorpore su gestión a la plataforma."
-        icon={<Workflow />}
-        title="No hay procesos cargados en esta vista."
-      />
+      <ProcessList />
     </div>
   );
 }

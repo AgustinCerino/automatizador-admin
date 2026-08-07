@@ -45,7 +45,7 @@ describe("normalizeApiErrorPayload", () => {
 
   it("usa el fallback para un cuerpo vacío", () => {
     expect(normalizeApiErrorPayload(404, undefined)).toEqual({
-      message: "No se encontró el recurso solicitado.",
+      message: "El recurso solicitado no existe.",
     });
   });
 
@@ -53,7 +53,7 @@ describe("normalizeApiErrorPayload", () => {
     expect(
       normalizeApiErrorPayload(500, "<html><body>Internal error</body></html>"),
     ).toEqual({
-      message: "Ocurrió un error interno. Intentá nuevamente.",
+      message: "Ocurrió un error interno.",
     });
   });
 
@@ -61,7 +61,7 @@ describe("normalizeApiErrorPayload", () => {
     expect(
       normalizeApiErrorPayload(503, "Falló http://127.0.0.1:8000/health"),
     ).toEqual({
-      message: "Ocurrió un error interno. Intentá nuevamente.",
+      message: "El servidor no está disponible.",
     });
   });
 
@@ -69,7 +69,7 @@ describe("normalizeApiErrorPayload", () => {
     expect(
       normalizeApiErrorPayload(500, "GET /api/internal/health falló"),
     ).toEqual({
-      message: "Ocurrió un error interno. Intentá nuevamente.",
+      message: "Ocurrió un error interno.",
     });
   });
 
@@ -87,13 +87,13 @@ describe("getFallbackErrorMessage", () => {
   it.each([
     [400, "La solicitud no es válida."],
     [401, "Tu sesión no es válida o ha vencido."],
-    [403, "No tenés permisos para realizar esta acción."],
-    [404, "No se encontró el recurso solicitado."],
+    [403, "No tenés permisos para acceder a este recurso."],
+    [404, "El recurso solicitado no existe."],
     [409, "La operación no puede realizarse en el estado actual."],
     [413, "El archivo o contenido supera el límite permitido."],
     [422, "Los datos enviados no son válidos."],
-    [500, "Ocurrió un error interno. Intentá nuevamente."],
-    [503, "Ocurrió un error interno. Intentá nuevamente."],
+    [500, "Ocurrió un error interno."],
+    [503, "El servidor no está disponible."],
   ])("devuelve el mensaje controlado para %i", (status, expectedMessage) => {
     expect(getFallbackErrorMessage(status)).toBe(expectedMessage);
   });
@@ -144,7 +144,7 @@ describe("createApiError", () => {
     );
 
     expect(error.message).toBe(
-      "Ocurrió un error interno. Intentá nuevamente.",
+      "Ocurrió un error interno.",
     );
   });
 });

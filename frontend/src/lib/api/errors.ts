@@ -1,7 +1,6 @@
 import type { ApiErrorPayload } from "@/lib/api/types";
 
-const GENERIC_ERROR_MESSAGE =
-  "Ocurrió un error interno. Intentá nuevamente.";
+const GENERIC_ERROR_MESSAGE = "Ocurrió un error interno.";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -60,15 +59,17 @@ export function getFallbackErrorMessage(status: number): string {
     case 401:
       return "Tu sesión no es válida o ha vencido.";
     case 403:
-      return "No tenés permisos para realizar esta acción.";
+      return "No tenés permisos para acceder a este recurso.";
     case 404:
-      return "No se encontró el recurso solicitado.";
+      return "El recurso solicitado no existe.";
     case 409:
       return "La operación no puede realizarse en el estado actual.";
     case 413:
       return "El archivo o contenido supera el límite permitido.";
     case 422:
       return "Los datos enviados no son válidos.";
+    case 503:
+      return "El servidor no está disponible.";
     default:
       return status >= 500
         ? GENERIC_ERROR_MESSAGE

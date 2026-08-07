@@ -1,6 +1,6 @@
 # Automatizador Administrativo — Frontend
 
-Interfaz web administrativa para organizar el acceso a procesos, ejecuciones y plantillas. Incluye el shell responsive, el sistema visual, autenticación con sesión HttpOnly y la integración HTTP con el estado real del backend.
+Interfaz web administrativa para organizar el acceso a procesos, ejecuciones y plantillas. Incluye el shell responsive, el sistema visual, autenticación con sesión HttpOnly y el primer flujo vertical real de procesos y ejecuciones.
 
 ## Stack
 
@@ -38,7 +38,9 @@ Navegador -> BFF de Next.js -> FastAPI
              ├── /api/backend/health -> /health
              ├── /api/auth/login     -> /auth/login y /auth/me
              ├── /api/auth/session   -> /auth/me
-             └── /api/auth/logout    -> borra la cookie local
+             ├── /api/auth/logout    -> borra la cookie local
+             ├── /api/backend/procesos
+             └── /api/backend/ejecuciones
 ```
 
 - `src/lib/api/client.ts` es el cliente del navegador y sólo acepta rutas internas bajo `/api/`.
@@ -47,6 +49,24 @@ Navegador -> BFF de Next.js -> FastAPI
 - `src/lib/api/errors.ts` normaliza respuestas fallidas a un contrato seguro para la interfaz.
 
 La pantalla de inicio consulta el health real con TanStack Query y muestra si el servidor está conectado.
+
+## Procesos y ejecuciones
+
+Las rutas `/procesos` y `/ejecuciones` consultan procesos reales mediante TanStack Query. Cada proceso enlaza a `/procesos/{procesoId}/ejecuciones`, donde se muestra su contexto, el historial real y la acción para crear una ejecución. La creación envía al BFF únicamente `proceso_id`; FastAPI determina el usuario autenticado y el estado inicial.
+
+El BFF autenticado incorpora estas rutas explícitas:
+
+- `GET /api/backend/procesos`.
+- `GET /api/backend/procesos/{procesoId}`.
+- `GET /api/backend/procesos/{procesoId}/ejecuciones`.
+- `POST /api/backend/ejecuciones`.
+- `GET /api/backend/ejecuciones/{ejecucionId}`.
+
+Cada handler valida la cookie mediante `/auth/me` una sola vez, deriva `cliente_id` del usuario actual y comprueba la pertenencia del proceso antes de exponer o crear ejecuciones. El navegador no puede seleccionar `cliente_id`, `usuario_id`, rol ni estado. Un `401` de FastAPI elimina la cookie y produce el código controlado `SESSION_EXPIRED`; los Client Components limpian TanStack Query y vuelven a `/login` sin aplicar esa política al formulario de login.
+
+Las ejecuciones de procesos `TRANSFORMACION_EXCEL` navegan a `/transformaciones/{ejecucionId}`. Esa ruta contiene por ahora solamente la verificación vertical, el estado y el contexto real de la ejecución. El workspace de carga, configuración, validación y generación queda pendiente. Otros tipos permanecen en su historial porque todavía no existe una vista funcional genérica autorizada.
+
+El backend permite listar ejecuciones sin filtro, pero ese endpoint no aplica aislamiento por cliente. Por ese motivo, la página global `/ejecuciones` ofrece navegación mediante los procesos reales del cliente en lugar de exponer una tabla global insegura.
 
 ## Autenticación y sesión
 
@@ -109,6 +129,14 @@ npm run dev
 6. Probá una contraseña incorrecta: el correo debe conservarse, la contraseña debe limpiarse y el mensaje no debe indicar si la cuenta existe.
 7. Con una cookie existente, detené FastAPI y recargá una ruta protegida o consultá la sesión: debe aparecer un error técnico controlado y la cookie no debe borrarse.
 
+## Prueba manual de procesos y ejecuciones
+
+1. Iniciá sesión y abrí `/procesos`; deben aparecer los procesos reales del cliente autenticado.
+2. Abrí un proceso y verificá que `/procesos/{procesoId}/ejecuciones` muestre su nombre e historial real.
+3. Creá una ejecución y comprobá que tenga ID y estado reales, sin enviar `cliente_id`, `usuario_id` ni `estado` desde el navegador.
+4. Para un proceso `TRANSFORMACION_EXCEL`, abrí la ejecución y verificá la ruta `/transformaciones/{ejecucionId}`.
+5. Recargá esa ruta y luego cerrá sesión; las páginas protegidas deben volver a exigir login.
+
 ## Validación
 
 ```bash
@@ -127,6 +155,8 @@ scripts/                    # Exportador reproducible del contrato
 src/
 ├── app/                      # Layouts, páginas, providers y Route Handlers
 ├── components/               # Componentes visuales compartidos
+├── features/processes/       # API browser, queries y cards de procesos
+├── features/executions/      # API browser, queries, tabla y creación
 ├── features/system/          # Consulta y estado visual del backend
 ├── lib/api/                  # Clientes HTTP, errores y forwarding seguro
 ├── lib/query/                # QueryClient, claves y política de reintentos
