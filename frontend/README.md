@@ -41,7 +41,9 @@ Navegador -> BFF de Next.js -> FastAPI
              ├── /api/auth/logout    -> borra la cookie local
              ├── /api/backend/procesos
              ├── /api/backend/ejecuciones
-             └── /api/backend/transformaciones/{ejecucionId}/resumen
+             ├── /api/backend/transformaciones/{ejecucionId}/resumen
+             ├── /api/backend/transformaciones/{ejecucionId}/archivos
+             └── /api/backend/transformaciones/{ejecucionId}/archivos/{archivoId}/estructura
 ```
 
 - `src/lib/api/client.ts` es el cliente del navegador y sólo acepta rutas internas bajo `/api/`.
@@ -71,7 +73,11 @@ El workspace usa TanStack Query y presenta las cuatro etapas `Archivo`, `Configu
 
 Mientras `estado_ejecucion` es `PROCESANDO`, la consulta actualiza el resumen aproximadamente cada tres segundos y detiene el polling al recibir cualquier otro estado. La pantalla representa el archivo fuente, la existencia de configuración y plantilla, las métricas de validación, el resultado generado y los issues `ERROR`/`WARNING`, sin exponer rutas de storage ni datos técnicos internos.
 
-Las acciones de carga, configuración, validación y generación se incorporan en los siguientes cortes verticales. Este workspace tampoco activa todavía descarga, edición/aplicación de plantillas ni trazabilidad detallada, aunque el resumen deje disponibles capacidades para esos flujos futuros. Otros tipos de proceso permanecen en su historial porque todavía no existe una vista funcional genérica autorizada.
+El workspace permite listar y cargar archivos fuente CSV, XLS y XLSX, elegir la hoja de Excel y la fila de encabezado, e inspeccionar columnas, tipos detectados, advertencias y una vista previa de hasta 20 filas. El borrador de esta selección vive exclusivamente en los query params `sourceFileId`, `sheet` y `headerRow`; no se guarda en storage del navegador, stores globales ni `resumen_json`. Cuando ya existe una configuración, `summary.source` es la autoridad y el origen se presenta en modo de solo lectura.
+
+La carga envía al BFF solamente el campo multipart `file`. El Route Handler valida el origen, agrega el ID de ejecución y `tipo_archivo=FUENTE`, y FastAPI conserva la autoridad sobre tamaño y contenido. El listado expuesto al navegador filtra fuentes compatibles y elimina rutas de storage y checksums. Antes de listar, cargar o inspeccionar, el BFF valida el contexto contra el resumen de Transformación Excel; antes de inspeccionar también comprueba que el archivo pertenezca a esa ejecución. La inspección traduce `sheet` y `headerRow` a los nombres del backend y fija `limit=20` del lado servidor.
+
+La configuración de columnas, validación y generación se incorporan en los siguientes cortes verticales. Este workspace tampoco activa todavía descarga, edición/aplicación de plantillas ni trazabilidad detallada, aunque el resumen deje disponibles capacidades para esos flujos futuros. Otros tipos de proceso permanecen en su historial porque todavía no existe una vista funcional genérica autorizada.
 
 El backend permite listar ejecuciones sin filtro, pero ese endpoint no aplica aislamiento por cliente. Por ese motivo, la página global `/ejecuciones` ofrece navegación mediante los procesos reales del cliente en lugar de exponer una tabla global insegura.
 
@@ -150,8 +156,11 @@ npm run dev
 2. Confirmá que la cabecera, las cuatro etapas y la próxima acción coincidan con el resumen de FastAPI.
 3. Verificá los casos sin archivo/configuración, validado, completado y error cuando existan, sin modificar el backend para fabricar estados.
 4. En una ejecución `PROCESANDO`, comprobá que el resumen se actualice sin recargar la página y que el polling se detenga al cambiar de estado.
-5. Confirmá en la pestaña de red que el navegador sólo consulta `/api/backend/transformaciones/{ejecucionId}/resumen`, nunca el puerto de FastAPI directamente.
-6. Verificá que no aparezcan botones de carga, configuración, validación, generación, descarga o plantillas en este corte.
+5. Sin configuración guardada, cargá un CSV y un Excel y confirmá que ambos aparezcan en el selector de archivos fuente.
+6. Para Excel, elegí una hoja con espacios en el nombre, cambiá la fila de encabezado e inspeccioná columnas, tipos, advertencias y vista previa. Para CSV, verificá que no se envíe una hoja.
+7. Recargá y confirmá que `sourceFileId`, `sheet` y `headerRow` conservan el borrador en la URL. En una ejecución ya configurada, comprobá que prevalezca la fuente del resumen en modo de solo lectura.
+8. Confirmá en la pestaña de red que el navegador sólo consulta las rutas explícitas `/api/backend/transformaciones/...`, nunca el puerto de FastAPI directamente, y que la carga multipart del navegador contiene solamente `file`.
+9. Verificá que no aparezcan acciones de configuración de columnas, validación, generación, descarga o plantillas en este corte.
 
 ## Validación
 

@@ -2,6 +2,7 @@
 
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { ErrorState } from "@/components/feedback/error-state";
 import { PageHeader } from "@/components/layout/page-header";
@@ -12,12 +13,12 @@ import {
   GenerationSummaryCard,
   NextActionCard,
   OperationalIssues,
-  SourceSummaryCard,
   TransformationSteps,
   ValidationSummaryCard,
   WorkspaceHeader,
 } from "@/features/transformations/components/workspace-sections";
 import { WorkspaceSkeleton } from "@/features/transformations/components/workspace-skeleton";
+import { SourceFilePanel } from "@/features/transformations/components/source-file-panel";
 import { ApiError } from "@/lib/api/errors";
 
 interface TransformationWorkspaceProps {
@@ -89,8 +90,11 @@ export function TransformationWorkspace({ executionId }: TransformationWorkspace
       <TransformationSteps summary={summary} />
       <NextActionCard summary={summary} />
 
+      <Suspense fallback={<WorkspaceSkeleton />}>
+        <SourceFilePanel summary={summary} />
+      </Suspense>
+
       <div className="grid gap-4 md:grid-cols-2">
-        <SourceSummaryCard source={summary.source} />
         <ConfigurationSummaryCard summary={summary} />
         <ValidationSummaryCard validation={summary.validation} />
         <GenerationSummaryCard generation={summary.generation} />

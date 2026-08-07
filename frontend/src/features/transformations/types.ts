@@ -12,6 +12,16 @@ export type TransformationGeneration =
   components["schemas"]["TransformacionExcelGenerationOperationalRead"];
 export type TransformationIssue =
   components["schemas"]["TransformacionExcelOperationalIssueRead"];
+export type TransformationSourceFile = Omit<
+  components["schemas"]["ArchivoRead"],
+  "checksum" | "ruta_storage"
+>;
+export type TransformationSourceStructure =
+  components["schemas"]["TransformacionExcelStructureRead"];
+export type TransformationSourceColumn =
+  components["schemas"]["TransformacionExcelColumnInspectionRead"];
+export type TransformationSourceWarning =
+  components["schemas"]["TransformacionExcelInspectionWarningRead"];
 export type TransformationAction = TransformationSummary["action_required"];
 
 export interface TransformationCapabilities {

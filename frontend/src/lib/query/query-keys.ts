@@ -22,5 +22,23 @@ export const queryKeys = {
       ["transformations", "detail", executionId] as const,
     summary: (executionId: number) =>
       ["transformations", "detail", executionId, "summary"] as const,
+    sourceFiles: (executionId: number) =>
+      ["transformations", "detail", executionId, "source-files"] as const,
+    sourceStructure: (
+      executionId: number,
+      sourceFileId: number,
+      sheet: string | null,
+      headerRow: number,
+    ) =>
+      [
+        "transformations",
+        "detail",
+        executionId,
+        "source-files",
+        sourceFileId,
+        "structure",
+        sheet,
+        headerRow,
+      ] as const,
   },
 } as const;

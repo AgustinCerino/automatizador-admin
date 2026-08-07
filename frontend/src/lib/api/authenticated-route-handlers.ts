@@ -4,6 +4,9 @@ import {
   parseExecutionRead,
   parseProcessList,
   parseProcessRead,
+  parseTransformationSourceFile,
+  parseTransformationSourceFileList,
+  parseTransformationSourceStructure,
 } from "@/lib/api/backend-contracts";
 import {
   BackendRequestError,
@@ -77,6 +80,18 @@ const ERROR_PAYLOADS = {
   validation: {
     code: "VALIDATION_ERROR",
     message: "Los datos enviados no son válidos.",
+  },
+  invalidSourceFile: {
+    code: "INVALID_SOURCE_FILE",
+    message: "El archivo fuente no es válido o no está permitido.",
+  },
+  sourceFileTooLarge: {
+    code: "SOURCE_FILE_TOO_LARGE",
+    message: "El archivo fuente supera el tamaño permitido.",
+  },
+  invalidInspection: {
+    code: "INVALID_SOURCE_INSPECTION",
+    message: "No se pudo inspeccionar el archivo con esos parámetros.",
   },
   unavailable: {
     code: "BACKEND_UNAVAILABLE",
@@ -538,4 +553,241 @@ export async function handleGetTransformationSummaryRequest(
   );
 
   return result.ok ? jsonResponse(result.value) : result.response;
+}
+
+const TRANSFORMATION_SOURCE_FILE_TYPE = "FUENTE";
+const TRANSFORMATION_SOURCE_EXTENSIONS = new Set([".csv", ".xls", ".xlsx"]);
+
+function isSupportedTransformationSourceFile(
+  file: ReturnType<typeof parseTransformationSourceFile>,
+): file is NonNullable<ReturnType<typeof parseTransformationSourceFile>> {
+  return (
+    file !== undefined &&
+    file.tipo_archivo === TRANSFORMATION_SOURCE_FILE_TYPE &&
+    file.extension !== null &&
+    TRANSFORMATION_SOURCE_EXTENSIONS.has(file.extension.toLowerCase())
+  );
+}
+
+async function validateTransformationExecution(
+  executionId: number,
+  session: AuthenticatedSession,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<HandlerResult<unknown>> {
+  return callBackend(
+    `/transformaciones-excel/${executionId}/resumen`,
+    session,
+    dependencies,
+    { headers: { Accept: "application/json" }, method: "GET" },
+    { 400: ERROR_PAYLOADS.incompatibleTransformation },
+  );
+}
+
+async function getTransformationSourceFiles(
+  executionId: number,
+  session: AuthenticatedSession,
+  dependencies: AuthenticatedRouteDependencies,
+) {
+  const contextResult = await validateTransformationExecution(
+    executionId,
+    session,
+    dependencies,
+  );
+  if (!contextResult.ok) return contextResult;
+
+  const filesResult = await callBackend(
+    `/archivos/ejecucion/${executionId}`,
+    session,
+    dependencies,
+    { headers: { Accept: "application/json" }, method: "GET" },
+  );
+  if (!filesResult.ok) return filesResult;
+
+  const files = parseTransformationSourceFileList(filesResult.value);
+  if (!files || files.some((file) => file.ejecucion_id !== executionId)) {
+    return {
+      ok: false as const,
+      response: errorResponse(ERROR_PAYLOADS.internal, 500),
+    };
+  }
+
+  return {
+    ok: true as const,
+    value: files.filter(isSupportedTransformationSourceFile),
+  };
+}
+
+export async function handleListTransformationSourceFilesRequest(
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+
+  const filesResult = await getTransformationSourceFiles(
+    executionId,
+    sessionResult.value,
+    dependencies,
+  );
+  return filesResult.ok ? jsonResponse(filesResult.value) : filesResult.response;
+}
+
+function getFileExtension(filename: string): string | undefined {
+  const extensionStart = filename.lastIndexOf(".");
+  return extensionStart > 0 ? filename.slice(extensionStart).toLowerCase() : undefined;
+}
+
+function parseSingleUploadFile(formData: FormData): File | undefined {
+  const entries = [...formData.entries()];
+  if (entries.length !== 1 || entries[0][0] !== "file") return undefined;
+
+  const value = entries[0][1];
+  if (!(value instanceof File) || value.name.length === 0) return undefined;
+  return value;
+}
+
+export async function handleUploadTransformationSourceFileRequest(
+  request: Request,
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  if (!isSameOriginRequest(request)) {
+    return errorResponse(ERROR_PAYLOADS.invalidOrigin, 403);
+  }
+
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+
+  let incomingFormData: FormData;
+  try {
+    incomingFormData = await request.formData();
+  } catch {
+    return errorResponse(ERROR_PAYLOADS.invalidRequest, 400);
+  }
+
+  const file = parseSingleUploadFile(incomingFormData);
+  const extension = file ? getFileExtension(file.name) : undefined;
+  if (!file || !extension || !TRANSFORMATION_SOURCE_EXTENSIONS.has(extension)) {
+    return errorResponse(ERROR_PAYLOADS.invalidSourceFile, 422);
+  }
+
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+
+  const contextResult = await validateTransformationExecution(
+    executionId,
+    sessionResult.value,
+    dependencies,
+  );
+  if (!contextResult.ok) return contextResult.response;
+
+  const backendFormData = new FormData();
+  backendFormData.append("ejecucion_id", String(executionId));
+  backendFormData.append("tipo_archivo", TRANSFORMATION_SOURCE_FILE_TYPE);
+  backendFormData.append("file", file, file.name);
+
+  const uploadResult = await callBackend(
+    "/archivos/upload",
+    sessionResult.value,
+    dependencies,
+    { body: backendFormData, headers: { Accept: "application/json" }, method: "POST" },
+    {
+      400: ERROR_PAYLOADS.invalidSourceFile,
+      413: ERROR_PAYLOADS.sourceFileTooLarge,
+    },
+  );
+  if (!uploadResult.ok) return uploadResult.response;
+
+  const uploadedFile = parseTransformationSourceFile(uploadResult.value);
+  if (
+    !isSupportedTransformationSourceFile(uploadedFile) ||
+    uploadedFile.ejecucion_id !== executionId
+  ) {
+    return errorResponse(ERROR_PAYLOADS.internal, 500);
+  }
+
+  return jsonResponse(uploadedFile, 201);
+}
+
+interface InspectionParameters {
+  headerRow: number;
+  sheet: string | null;
+}
+
+function parseInspectionParameters(request: Request): InspectionParameters | undefined {
+  let searchParams: URLSearchParams;
+  try {
+    searchParams = new URL(request.url).searchParams;
+  } catch {
+    return undefined;
+  }
+
+  if (
+    [...searchParams.keys()].some((key) => key !== "sheet" && key !== "headerRow") ||
+    searchParams.getAll("sheet").length > 1 ||
+    searchParams.getAll("headerRow").length > 1
+  ) {
+    return undefined;
+  }
+
+  const rawHeaderRow = searchParams.get("headerRow") ?? "1";
+  const headerRow = parsePositiveInteger(rawHeaderRow);
+  if (!headerRow) return undefined;
+
+  return { headerRow, sheet: searchParams.get("sheet") };
+}
+
+export async function handleInspectTransformationSourceFileRequest(
+  request: Request,
+  rawExecutionId: string,
+  rawFileId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  const executionId = parsePositiveInteger(rawExecutionId);
+  const fileId = parsePositiveInteger(rawFileId);
+  const inspection = parseInspectionParameters(request);
+  if (!executionId || !fileId || !inspection) return invalidIdentifierResponse();
+
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+
+  const filesResult = await getTransformationSourceFiles(
+    executionId,
+    sessionResult.value,
+    dependencies,
+  );
+  if (!filesResult.ok) return filesResult.response;
+
+  const sourceFile = filesResult.value.find((file) => file.id === fileId);
+  if (!sourceFile) return errorResponse(ERROR_PAYLOADS.notFound, 404);
+  if (sourceFile.extension?.toLowerCase() === ".csv" && inspection.sheet !== null) {
+    return errorResponse(ERROR_PAYLOADS.invalidInspection, 422);
+  }
+
+  const backendQuery = new URLSearchParams({
+    header_row: String(inspection.headerRow),
+    limit: "20",
+  });
+  if (inspection.sheet !== null) {
+    backendQuery.set("sheet_name", inspection.sheet);
+  }
+
+  const structureResult = await callBackend(
+    `/transformaciones-excel/archivos/${fileId}/estructura?${backendQuery.toString()}`,
+    sessionResult.value,
+    dependencies,
+    { headers: { Accept: "application/json" }, method: "GET" },
+    { 400: ERROR_PAYLOADS.invalidInspection },
+  );
+  if (!structureResult.ok) return structureResult.response;
+
+  const structure = parseTransformationSourceStructure(structureResult.value);
+  if (!structure || structure.archivo_id !== fileId) {
+    return errorResponse(ERROR_PAYLOADS.internal, 500);
+  }
+
+  return jsonResponse(structure);
 }

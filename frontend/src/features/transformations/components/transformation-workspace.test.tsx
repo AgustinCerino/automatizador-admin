@@ -9,6 +9,9 @@ import { ApiError } from "@/lib/api/errors";
 vi.mock("@/features/transformations/api/use-transformation-summary-query", () => ({
   useTransformationSummaryQuery: vi.fn(),
 }));
+vi.mock("@/features/transformations/components/source-file-panel", () => ({
+  SourceFilePanel: () => <section>Panel de archivo fuente</section>,
+}));
 
 const useSummaryMock = vi.mocked(useTransformationSummaryQuery);
 const SUMMARY = {
