@@ -33,7 +33,7 @@ class Usuario(Base):
     estado: Mapped[str] = mapped_column(
         String(30),
         nullable=False,
-        default="ACTIVO",
+        default="ACTIVO", 
         server_default="ACTIVO",
     )
     created_at: Mapped[datetime] = mapped_column(
