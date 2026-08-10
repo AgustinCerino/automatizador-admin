@@ -23,6 +23,10 @@ export type TransformationSourceColumn =
 export type TransformationSourceWarning =
   components["schemas"]["TransformacionExcelInspectionWarningRead"];
 export type TransformationAction = TransformationSummary["action_required"];
+export type TransformationExcelConfig =
+  components["schemas"]["TransformacionExcelConfig"];
+export type TransformationExcelConfigRead =
+  components["schemas"]["TransformacionExcelConfigRead"];
 
 export interface TransformationCapabilities {
   canDownload: boolean;

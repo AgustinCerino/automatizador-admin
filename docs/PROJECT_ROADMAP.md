@@ -55,12 +55,13 @@ No expandir el esquema por defecto. Si una tarea requiere modelos, tablas o rela
 | Tarea 20 — Plantillas | Completado | Gestión y aplicación de plantillas con permisos existentes. |
 | Tarea 21 — Operación y trazabilidad | Completado | Resumen, issues, capacidades, acciones y eventos sanitizados. |
 | Tarea 22 — Hardening y cierre técnico | Completado | Límites, rutas seguras, integridad, concurrencia y pruebas. |
+| Tarea 29 — Constructor básico de Transformación Excel | Completado | Constructor integrado para columnas `SOURCE` y `CONSTANT`, con inspección real, persistencia segura y resguardo de configuraciones avanzadas. |
 
 ### Frontend posterior a Tarea 22
 
 El repositorio y el historial Git verifican implementación frontend: shell y sistema visual, base API tipada, autenticación segura, procesos y ejecuciones, workspace operativo de Transformación Excel, y carga/inspección de archivo fuente. Los commits relevantes no asignan números de tarea ni existe documentación que los vincule de forma verificable a Tareas 23–28 u otras.
 
-Por ello, **no hay tareas frontend numeradas posteriores a la Tarea 22 con estado verificable**. No se asignan retrospectivamente números ni se declara el próximo bloque funcional: su estado es **ESTADO NO VERIFICADO** hasta recibir planificación explícita.
+Por ello, fuera de la Tarea 29 autorizada explícitamente, **no hay tareas frontend numeradas posteriores a la Tarea 22 con estado verificable**. No se asignan retrospectivamente números ni se declara el próximo bloque funcional: su estado es **ESTADO NO VERIFICADO** hasta recibir planificación explícita.
 
 El detalle histórico de la antigua Tarea 17, su validación manual y el registro histórico posterior se conserva en [`docs/archive/PROJECT_ROADMAP_HISTORY.md`](archive/PROJECT_ROADMAP_HISTORY.md).
 

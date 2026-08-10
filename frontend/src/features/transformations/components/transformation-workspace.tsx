@@ -19,6 +19,7 @@ import {
 } from "@/features/transformations/components/workspace-sections";
 import { WorkspaceSkeleton } from "@/features/transformations/components/workspace-skeleton";
 import { SourceFilePanel } from "@/features/transformations/components/source-file-panel";
+import { TransformationConfigurationBuilder } from "@/features/transformations/components/transformation-configuration-builder";
 import { ApiError } from "@/lib/api/errors";
 
 interface TransformationWorkspaceProps {
@@ -93,6 +94,8 @@ export function TransformationWorkspace({ executionId }: TransformationWorkspace
       <Suspense fallback={<WorkspaceSkeleton />}>
         <SourceFilePanel summary={summary} />
       </Suspense>
+
+      <TransformationConfigurationBuilder summary={summary} />
 
       <div className="grid gap-4 md:grid-cols-2">
         <ConfigurationSummaryCard summary={summary} />

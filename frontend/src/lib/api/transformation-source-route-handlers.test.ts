@@ -185,7 +185,6 @@ describe("BFF de archivos fuente de transformación", () => {
   it("verifica pertenencia y traduce la inspección con hoja exacta y límite fijo", async () => {
     const dependencies = createDependencies([
       Response.json(SUMMARY),
-      Response.json([SOURCE_FILE]),
       Response.json(STRUCTURE),
     ]);
     const request = new Request(
@@ -200,33 +199,38 @@ describe("BFF de archivos fuente de transformación", () => {
 
     expect(response.status).toBe(200);
     expect(dependencies.fetchBackend).toHaveBeenNthCalledWith(
-      3,
+      2,
       "/transformaciones-excel/archivos/8/estructura?header_row=2&limit=20&sheet_name=+Ventas+2026+",
       TOKEN,
       { headers: { Accept: "application/json" }, method: "GET" },
     );
   });
 
-  it("no inspecciona un archivo ajeno a la ejecución", async () => {
+  it("traduce headerRow sin convertirlo en nombre de hoja", async () => {
     const dependencies = createDependencies([
       Response.json(SUMMARY),
-      Response.json([SOURCE_FILE]),
+      Response.json({ ...STRUCTURE, archivo_id: 15, header_row: 1 }),
     ]);
     const response = await handleInspectTransformationSourceFileRequest(
       new Request("http://localhost/api/structure?headerRow=1"),
-      "31",
-      "99",
+      "12",
+      "15",
       dependencies,
     );
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(200);
+    expect(dependencies.fetchBackend).toHaveBeenNthCalledWith(
+      2,
+      "/transformaciones-excel/archivos/15/estructura?header_row=1&limit=20",
+      TOKEN,
+      { headers: { Accept: "application/json" }, method: "GET" },
+    );
     expect(dependencies.fetchBackend).toHaveBeenCalledTimes(2);
   });
 
-  it("rechaza hoja para CSV y parámetros browser no autorizados", async () => {
-    const csvFile = { ...SOURCE_FILE, extension: ".csv", nombre_original: "origen.csv" };
+  it("normaliza un 400 de inspección sin convertirlo en 404", async () => {
     const dependencies = createDependencies([
       Response.json(SUMMARY),
-      Response.json([csvFile]),
+      Response.json({ detail: "La hoja indicada no existe: Datos" }, { status: 400 }),
     ]);
     const response = await handleInspectTransformationSourceFileRequest(
       new Request("http://localhost/api/structure?sheet=Datos&headerRow=1"),
@@ -234,7 +238,11 @@ describe("BFF de archivos fuente de transformación", () => {
       "8",
       dependencies,
     );
-    expect(response.status).toBe(422);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: "INVALID_SOURCE_INSPECTION",
+      message: "No se pudo inspeccionar el archivo con esos parámetros.",
+    });
 
     const invalid = await handleInspectTransformationSourceFileRequest(
       new Request("http://localhost/api/structure?headerRow=1&limit=100"),

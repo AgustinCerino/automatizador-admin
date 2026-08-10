@@ -12,6 +12,9 @@ vi.mock("@/features/transformations/api/use-transformation-summary-query", () =>
 vi.mock("@/features/transformations/components/source-file-panel", () => ({
   SourceFilePanel: () => <section>Panel de archivo fuente</section>,
 }));
+vi.mock("@/features/transformations/components/transformation-configuration-builder", () => ({
+  TransformationConfigurationBuilder: () => <section>Constructor de configuraciÃ³n</section>,
+}));
 
 const useSummaryMock = vi.mocked(useTransformationSummaryQuery);
 const SUMMARY = {

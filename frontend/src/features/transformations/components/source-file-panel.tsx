@@ -95,7 +95,7 @@ function errorDescription(error: unknown): string {
     400: "Revisá el archivo, la hoja y la fila de encabezado.",
     401: "Tu sesión venció.",
     403: "No tenés permisos para usar este archivo.",
-    404: "El archivo ya no existe o no pertenece a esta ejecución.",
+    404: "No se encontró el archivo fuente seleccionado.",
     413: "El archivo supera el tamaño permitido por el servidor.",
     422: "El archivo o los parámetros de inspección no son válidos.",
     500: "El servidor no pudo procesar la respuesta.",

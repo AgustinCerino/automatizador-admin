@@ -555,6 +555,65 @@ export async function handleGetTransformationSummaryRequest(
   return result.ok ? jsonResponse(result.value) : result.response;
 }
 
+export async function handleGetTransformationConfigurationRequest(
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+
+  const result = await callBackend(
+    `/transformaciones-excel/${executionId}/configuracion`,
+    sessionResult.value,
+    dependencies,
+    { headers: { Accept: "application/json" }, method: "GET" },
+    { 400: ERROR_PAYLOADS.incompatibleTransformation },
+  );
+  return result.ok ? jsonResponse(result.value) : result.response;
+}
+
+export async function handleSaveTransformationConfigurationRequest(
+  request: Request,
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  if (!isSameOriginRequest(request)) {
+    return errorResponse(ERROR_PAYLOADS.invalidOrigin, 403);
+  }
+
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+
+  let configuration: unknown;
+  try {
+    configuration = await request.json();
+  } catch {
+    return errorResponse(ERROR_PAYLOADS.invalidRequest, 400);
+  }
+  if (!configuration || typeof configuration !== "object" || Array.isArray(configuration)) {
+    return errorResponse(ERROR_PAYLOADS.validation, 422);
+  }
+
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+
+  const result = await callBackend(
+    `/transformaciones-excel/${executionId}/configuracion`,
+    sessionResult.value,
+    dependencies,
+    {
+      body: JSON.stringify(configuration),
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      method: "POST",
+    },
+    { 400: ERROR_PAYLOADS.incompatibleTransformation },
+  );
+  return result.ok ? jsonResponse(result.value) : result.response;
+}
+
 const TRANSFORMATION_SOURCE_FILE_TYPE = "FUENTE";
 const TRANSFORMATION_SOURCE_EXTENSIONS = new Set([".csv", ".xls", ".xlsx"]);
 
@@ -754,18 +813,12 @@ export async function handleInspectTransformationSourceFileRequest(
   const sessionResult = await resolveSession(dependencies);
   if (!sessionResult.ok) return sessionResult.response;
 
-  const filesResult = await getTransformationSourceFiles(
+  const contextResult = await validateTransformationExecution(
     executionId,
     sessionResult.value,
     dependencies,
   );
-  if (!filesResult.ok) return filesResult.response;
-
-  const sourceFile = filesResult.value.find((file) => file.id === fileId);
-  if (!sourceFile) return errorResponse(ERROR_PAYLOADS.notFound, 404);
-  if (sourceFile.extension?.toLowerCase() === ".csv" && inspection.sheet !== null) {
-    return errorResponse(ERROR_PAYLOADS.invalidInspection, 422);
-  }
+  if (!contextResult.ok) return contextResult.response;
 
   const backendQuery = new URLSearchParams({
     header_row: String(inspection.headerRow),
