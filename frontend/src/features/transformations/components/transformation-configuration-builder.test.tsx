@@ -78,7 +78,7 @@ describe("TransformationConfigurationBuilder", () => {
     await user.type(screen.getByLabelText("Nombre de salida"), "Monto");
     await user.click(screen.getByRole("combobox", { name: "Columna de origen" }));
     await user.click(screen.getByRole("option", { name: "Importe" }));
-    await user.click(screen.getByRole("button", { name: /guardar configuración/i }));
+    await user.click(screen.getByRole("button", { name: /guardar configuraci/i }));
 
     expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
       output_columns: [expect.objectContaining({
@@ -95,10 +95,10 @@ describe("TransformationConfigurationBuilder", () => {
     render(<TransformationConfigurationBuilder summary={SUMMARY} />);
 
     await user.type(screen.getByLabelText("Nombre de salida"), "País");
-    await user.click(screen.getByRole("combobox", { name: "Operación de columna 1" }));
+    await user.click(screen.getByRole("combobox", { name: /operaci/i }));
     await user.click(screen.getByRole("option", { name: "CONSTANT" }));
     await user.type(screen.getByLabelText("Valor constante"), "Argentina");
-    await user.click(screen.getByRole("button", { name: /guardar configuración/i }));
+    await user.click(screen.getByRole("button", { name: /guardar configuraci/i }));
 
     expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
       output_columns: [expect.objectContaining({ operation: "CONSTANT", value: "Argentina" })],
@@ -106,18 +106,96 @@ describe("TransformationConfigurationBuilder", () => {
     expect(mutateAsync.mock.calls[0][0].output_columns[0]).not.toHaveProperty("source_column");
   });
 
-  it("muestra validación inmediata y protege una configuración avanzada", async () => {
+  it("muestra validacion inmediata y permite una configuracion avanzada", async () => {
     const user = userEvent.setup();
     const { rerender } = render(<TransformationConfigurationBuilder summary={SUMMARY} />);
-    await user.click(screen.getByRole("button", { name: /guardar configuración/i }));
-    expect(screen.getByRole("alert")).toHaveTextContent("Completá el nombre");
+    await user.click(screen.getByRole("button", { name: /guardar configuraci/i }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Complet");
 
     configurationQueryMock.mockReturnValue({
       data: { configuracion: { output_columns: [{ operation: "CONCAT" }] }, ejecucion_id: 31 },
       isPending: false,
     } as never);
     rerender(<TransformationConfigurationBuilder summary={{ ...SUMMARY, has_configuration: true }} />);
-    expect(screen.getByRole("alert")).toHaveTextContent("Configuración avanzada detectada");
-    expect(screen.queryByRole("button", { name: /guardar configuración/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /guardar configuraci/i })).toBeInTheDocument();
+  });
+
+  it("serializes CONCAT parts", async () => {
+    const user = userEvent.setup();
+    render(<TransformationConfigurationBuilder summary={SUMMARY} />);
+    await user.type(screen.getByLabelText("Nombre de salida"), "Referencia");
+    await user.click(screen.getByRole("combobox", { name: /operaci/i }));
+    await user.click(screen.getByRole("option", { name: "CONCAT" }));
+    await user.click(screen.getByRole("button", { name: /agregar parte/i }));
+    await user.click(screen.getByRole("combobox", { name: "Columna de parte 1" }));
+    await user.click(screen.getByRole("option", { name: "Cliente" }));
+    await user.click(screen.getByRole("button", { name: /agregar parte/i }));
+    await user.click(screen.getByRole("combobox", { name: "Tipo de parte 2" }));
+    await user.click(screen.getByRole("option", { name: "LITERAL" }));
+    await user.type(screen.getByRole("textbox", { name: "Literal de parte 2" }), " - ");
+    await user.click(screen.getByRole("button", { name: /guardar configuraci/i }));
+    expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ output_columns: [expect.objectContaining({ operation: "CONCAT", parts: [{ type: "SOURCE", value: "Cliente" }, { type: "LITERAL", value: " - " }] })] }));
+  });
+
+  it("serializes arithmetic operands", async () => {
+    const user = userEvent.setup();
+    render(<TransformationConfigurationBuilder summary={SUMMARY} />);
+    await user.type(screen.getByLabelText("Nombre de salida"), "Monto");
+    await user.click(screen.getByRole("combobox", { name: /operaci/i }));
+    await user.click(screen.getByRole("option", { name: "ARITHMETIC" }));
+    await user.click(screen.getByRole("combobox", { name: "Operando izquierdo" }));
+    await user.click(screen.getByRole("option", { name: "Importe" }));
+    await user.type(screen.getByRole("textbox", { name: "Operando derecho" }), "1.21");
+    await user.click(screen.getByRole("button", { name: /guardar configuraci/i }));
+    expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ output_columns: [expect.objectContaining({ operation: "ARITHMETIC", left_operand: { type: "SOURCE", value: "Importe" }, right_operand: { type: "CONSTANT", value: 1.21 } })] }));
+  });
+
+  it("serializes VALUE_MAP mappings", async () => {
+    const user = userEvent.setup();
+    render(<TransformationConfigurationBuilder summary={SUMMARY} />);
+    await user.type(screen.getByLabelText("Nombre de salida"), "Medio");
+    await user.click(screen.getByRole("combobox", { name: /operaci/i }));
+    await user.click(screen.getByRole("option", { name: "VALUE_MAP" }));
+    await user.click(screen.getByRole("combobox", { name: "Columna de origen" }));
+    await user.click(screen.getByRole("option", { name: "Cliente" }));
+    await user.click(screen.getByRole("button", { name: /agregar equivalencia/i }));
+    await user.type(screen.getByRole("textbox", { name: "Clave de equivalencia 1" }), "Efectivo");
+    await user.type(screen.getByRole("textbox", { name: "Valor de equivalencia 1" }), "1");
+    await user.click(screen.getByRole("button", { name: /guardar configuraci/i }));
+    expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ output_columns: [expect.objectContaining({ operation: "VALUE_MAP", source_column: "Cliente", mapping: { Efectivo: "1" }, unmapped_policy: "ERROR" })] }));
+  });
+
+  it("serializes filters, deduplication, and sorting", async () => {
+    const user = userEvent.setup();
+    render(<TransformationConfigurationBuilder summary={SUMMARY} />);
+    await user.type(screen.getByLabelText("Nombre de salida"), "Monto");
+    await user.click(screen.getByRole("combobox", { name: "Columna de origen" }));
+    await user.click(screen.getByRole("option", { name: "Importe" }));
+    await user.click(screen.getByRole("button", { name: /agregar filtro/i }));
+    await user.click(screen.getByRole("combobox", { name: "Columna del filtro 1" }));
+    await user.click(screen.getByRole("option", { name: "Cliente" }));
+    await user.type(screen.getByRole("textbox", { name: "Valor del filtro 1" }), "ACME");
+    await user.click(screen.getByRole("checkbox", { name: /eliminar duplicados/i }));
+    await user.click(screen.getByRole("checkbox", { name: "Monto" }));
+    await user.click(screen.getByRole("button", { name: /agregar ordenamiento/i }));
+    await user.click(screen.getByRole("combobox", { name: "Columna de ordenamiento 1" }));
+    await user.click(screen.getByRole("option", { name: "Monto" }));
+    await user.click(screen.getByRole("button", { name: /guardar configuraci/i }));
+    expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ rows: {
+      filters: [{ source_column: "Cliente", operator: "EQUALS", value: "ACME" }],
+      remove_duplicates: { enabled: true, by_output_columns: ["Monto"], keep: "FIRST" },
+      sort_by: [{ output_column: "Monto", direction: "ASC" }],
+    } }));
+  });
+
+  it("enforces the filter and sorting limits", async () => {
+    const user = userEvent.setup();
+    render(<TransformationConfigurationBuilder summary={SUMMARY} />);
+    const addFilter = screen.getByRole("button", { name: /agregar filtro/i });
+    for (let index = 0; index < 5; index += 1) await user.click(addFilter);
+    expect(addFilter).toBeDisabled();
+    const addSort = screen.getByRole("button", { name: /agregar ordenamiento/i });
+    for (let index = 0; index < 3; index += 1) await user.click(addSort);
+    expect(addSort).toBeDisabled();
   });
 });

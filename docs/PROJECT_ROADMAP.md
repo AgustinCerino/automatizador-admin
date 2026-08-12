@@ -56,6 +56,8 @@ No expandir el esquema por defecto. Si una tarea requiere modelos, tablas o rela
 | Tarea 21 — Operación y trazabilidad | Completado | Resumen, issues, capacidades, acciones y eventos sanitizados. |
 | Tarea 22 — Hardening y cierre técnico | Completado | Límites, rutas seguras, integridad, concurrencia y pruebas. |
 | Tarea 29 — Constructor básico de Transformación Excel | Completado | Constructor integrado para columnas `SOURCE` y `CONSTANT`, con inspección real, persistencia segura y resguardo de configuraciones avanzadas. |
+| Tarea 30 — Operaciones avanzadas del constructor de Transformación Excel | Completado | Constructor integrado para `CONCAT`, `ARITHMETIC` y `VALUE_MAP`, con persistencia y recuperación de las cinco operaciones autorizadas. |
+| Tarea 31 — Reglas de filas de Transformación Excel | Completado | Constructor integrado para filtros, deduplicación y ordenamiento con persistencia en la configuración de transformación. |
 
 ### Frontend posterior a Tarea 22
 
