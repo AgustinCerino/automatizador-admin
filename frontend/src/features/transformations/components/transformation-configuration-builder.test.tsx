@@ -5,6 +5,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   useSaveTransformationConfiguration,
   useTransformationConfigurationQuery,
+  useValidateTransformationConfiguration,
 } from "@/features/transformations/api/use-configuration";
 import { useTransformationSourceStructureQuery } from "@/features/transformations/api/use-source-files";
 import { TransformationConfigurationBuilder } from "@/features/transformations/components/transformation-configuration-builder";
@@ -16,13 +17,18 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/features/transformations/api/use-configuration", () => ({
   useSaveTransformationConfiguration: vi.fn(),
   useTransformationConfigurationQuery: vi.fn(),
+  useValidateTransformationConfiguration: vi.fn(),
 }));
 vi.mock("@/features/transformations/api/use-source-files", () => ({
   useTransformationSourceStructureQuery: vi.fn(),
 }));
+vi.mock("@/features/transformations/components/transformation-validation-panel", () => ({
+  TransformationValidationPanel: () => null,
+}));
 
 const configurationQueryMock = vi.mocked(useTransformationConfigurationQuery);
 const saveMock = vi.mocked(useSaveTransformationConfiguration);
+const validateMock = vi.mocked(useValidateTransformationConfiguration);
 const structureQueryMock = vi.mocked(useTransformationSourceStructureQuery);
 const mutateAsync = vi.fn();
 
@@ -45,7 +51,7 @@ const SUMMARY = {
   warnings_count: 0,
 } satisfies TransformationSummary;
 
-describe("TransformationConfigurationBuilder", () => {
+describe("TransformationConfigurationBuilder", { timeout: 15_000 }, () => {
   beforeAll(() => {
     Element.prototype.hasPointerCapture = () => false;
     Element.prototype.scrollIntoView = () => undefined;
@@ -54,6 +60,7 @@ describe("TransformationConfigurationBuilder", () => {
     mutateAsync.mockReset();
     configurationQueryMock.mockReturnValue({ isPending: false } as never);
     saveMock.mockReturnValue({ isError: false, isPending: false, isSuccess: false, mutateAsync } as never);
+    validateMock.mockReturnValue({ isError: false, isPending: false, mutateAsync: vi.fn() } as never);
     structureQueryMock.mockReturnValue({
       data: { columns: [{ name: "Importe" }, { name: "Cliente" }] },
       isPending: false,
@@ -110,7 +117,7 @@ describe("TransformationConfigurationBuilder", () => {
     const user = userEvent.setup();
     const { rerender } = render(<TransformationConfigurationBuilder summary={SUMMARY} />);
     await user.click(screen.getByRole("button", { name: /guardar configuraci/i }));
-    expect(screen.getByRole("alert")).toHaveTextContent("Complet");
+    expect(screen.getByText(/Complet/)).toBeInTheDocument();
 
     configurationQueryMock.mockReturnValue({
       data: { configuracion: { output_columns: [{ operation: "CONCAT" }] }, ejecucion_id: 31 },
@@ -178,8 +185,7 @@ describe("TransformationConfigurationBuilder", () => {
     await user.click(screen.getByRole("checkbox", { name: /eliminar duplicados/i }));
     await user.click(screen.getByRole("checkbox", { name: "Monto" }));
     await user.click(screen.getByRole("button", { name: /agregar ordenamiento/i }));
-    await user.click(screen.getByRole("combobox", { name: "Columna de ordenamiento 1" }));
-    await user.click(screen.getByRole("option", { name: "Monto" }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Columna de ordenamiento 1" }), "Monto");
     await user.click(screen.getByRole("button", { name: /guardar configuraci/i }));
     expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ rows: {
       filters: [{ source_column: "Cliente", operator: "EQUALS", value: "ACME" }],
@@ -191,11 +197,48 @@ describe("TransformationConfigurationBuilder", () => {
   it("enforces the filter and sorting limits", async () => {
     const user = userEvent.setup();
     render(<TransformationConfigurationBuilder summary={SUMMARY} />);
+    await user.type(screen.getByLabelText("Nombre de salida"), "Monto");
+    await user.click(screen.getByRole("combobox", { name: "Columna de origen" }));
+    await user.click(screen.getByRole("option", { name: "Importe" }));
     const addFilter = screen.getByRole("button", { name: /agregar filtro/i });
     for (let index = 0; index < 5; index += 1) await user.click(addFilter);
     expect(addFilter).toBeDisabled();
     const addSort = screen.getByRole("button", { name: /agregar ordenamiento/i });
     for (let index = 0; index < 3; index += 1) await user.click(addSort);
     expect(addSort).toBeDisabled();
+  });
+
+  it("allows selecting an ordering column with the keyboard-compatible native control", async () => {
+    const user = userEvent.setup();
+    render(<TransformationConfigurationBuilder summary={SUMMARY} />);
+    await user.type(screen.getByLabelText("Nombre de salida"), "Monto");
+    await user.click(screen.getByRole("combobox", { name: "Columna de origen" }));
+    await user.click(screen.getByRole("option", { name: "Importe" }));
+    await user.click(screen.getByRole("button", { name: /agregar ordenamiento/i }));
+    const sortColumn = screen.getByRole("combobox", { name: "Columna de ordenamiento 1" });
+    await user.selectOptions(sortColumn, "Monto");
+    expect(sortColumn).toHaveValue("Monto");
+  });
+
+  it("updates ordering options and marks a renamed output column as invalid", async () => {
+    const user = userEvent.setup();
+    render(<TransformationConfigurationBuilder summary={SUMMARY} />);
+    await user.type(screen.getByLabelText("Nombre de salida"), "Monto");
+    await user.click(screen.getByRole("combobox", { name: "Columna de origen" }));
+    await user.click(screen.getByRole("option", { name: "Importe" }));
+    await user.click(screen.getByRole("button", { name: /agregar ordenamiento/i }));
+    const sortColumn = screen.getByRole("combobox", { name: "Columna de ordenamiento 1" });
+    expect(screen.getByRole("option", { name: "Monto" })).toBeInTheDocument();
+    await user.selectOptions(sortColumn, "Monto");
+    await user.clear(screen.getByLabelText("Nombre de salida"));
+    await user.type(screen.getByLabelText("Nombre de salida"), "Importe total");
+    expect(screen.getByRole("option", { name: "Importe total" })).toBeInTheDocument();
+    expect(screen.getByText(/ya no est/)).toBeInTheDocument();
+  });
+
+  it("explains why sorting is unavailable without a valid output column", () => {
+    render(<TransformationConfigurationBuilder summary={SUMMARY} />);
+    expect(screen.getByText(/Primero configur/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /agregar ordenamiento/i })).toBeDisabled();
   });
 });

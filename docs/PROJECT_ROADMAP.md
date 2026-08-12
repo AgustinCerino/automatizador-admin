@@ -58,6 +58,7 @@ No expandir el esquema por defecto. Si una tarea requiere modelos, tablas o rela
 | Tarea 29 — Constructor básico de Transformación Excel | Completado | Constructor integrado para columnas `SOURCE` y `CONSTANT`, con inspección real, persistencia segura y resguardo de configuraciones avanzadas. |
 | Tarea 30 — Operaciones avanzadas del constructor de Transformación Excel | Completado | Constructor integrado para `CONCAT`, `ARITHMETIC` y `VALUE_MAP`, con persistencia y recuperación de las cinco operaciones autorizadas. |
 | Tarea 31 — Reglas de filas de Transformación Excel | Completado | Constructor integrado para filtros, deduplicación y ordenamiento con persistencia en la configuración de transformación. |
+| Tarea 32 — Dry-run y validación frontend | Completado | Validación explícita sobre la configuración persistida, con preview dinámico, métricas, warnings, errores y estado stale al editar. |
 
 ### Frontend posterior a Tarea 22
 

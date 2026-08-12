@@ -26,6 +26,7 @@ export function RowRulesEditor({ disabled, onChange, outputColumns, rows, source
   const updateFilter = (id: number, update: Partial<DraftFilter>) => onChange({ ...rows, filters: rows.filters.map((filter) => filter.id === id ? { ...filter, ...update } : filter) });
   const updateSort = (id: number, update: Partial<DraftSortRule>) => onChange({ ...rows, sortBy: rows.sortBy.map((rule) => rule.id === id ? { ...rule, ...update } : rule) });
   const needsValue = (operator: FilterOperator) => !["NOT_EMPTY", "IS_EMPTY"].includes(operator);
+  const hasOutputColumns = outputColumns.length > 0;
 
   return <div className="space-y-5">
     <section className="space-y-3 rounded-lg border p-4"><div><h3 className="font-medium">Filtros</h3><p className="text-sm text-muted-foreground">Se aplican sobre las columnas inspeccionadas del archivo fuente.</p></div>
@@ -42,8 +43,18 @@ export function RowRulesEditor({ disabled, onChange, outputColumns, rows, source
       {rows.removeDuplicates.enabled ? <div className="space-y-2"><Label>Columnas de salida</Label><div className="flex flex-wrap gap-x-4 gap-y-2">{outputColumns.map((column) => <label className="flex items-center gap-2 text-sm" key={column}><input checked={rows.removeDuplicates.byOutputColumns.includes(column)} disabled={disabled} onChange={(event) => onChange({ ...rows, removeDuplicates: { ...rows.removeDuplicates, byOutputColumns: event.target.checked ? [...rows.removeDuplicates.byOutputColumns, column] : rows.removeDuplicates.byOutputColumns.filter((item) => item !== column) } })} type="checkbox" />{column}</label>)}</div></div> : null}
     </section>
     <section className="space-y-3 rounded-lg border p-4"><div><h3 className="font-medium">Ordenamiento</h3><p className="text-sm text-muted-foreground">El orden de la lista define la prioridad.</p></div>
-      {rows.sortBy.map((rule, index) => <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_10rem_auto]" key={rule.id}><Select disabled={disabled} onValueChange={(outputColumn) => updateSort(rule.id, { outputColumn })} value={rule.outputColumn || undefined}><SelectTrigger aria-label={`Columna de ordenamiento ${index + 1}`}><SelectValue placeholder="Columna de salida" /></SelectTrigger><SelectContent>{outputColumns.map((column) => <SelectItem key={column} value={column}>{column}</SelectItem>)}</SelectContent></Select><Select disabled={disabled} onValueChange={(direction) => updateSort(rule.id, { direction: direction as SortDirection })} value={rule.direction}><SelectTrigger aria-label={`Direccion de ordenamiento ${index + 1}`}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ASC">Ascendente</SelectItem><SelectItem value="DESC">Descendente</SelectItem></SelectContent></Select><Button aria-label={`Eliminar ordenamiento ${index + 1}`} disabled={disabled} onClick={() => onChange({ ...rows, sortBy: rows.sortBy.filter((item) => item.id !== rule.id) })} size="icon" type="button" variant="outline"><Trash2 aria-hidden="true" /></Button></div>)}
-      <Button disabled={disabled || rows.sortBy.length >= 3} onClick={() => onChange({ ...rows, sortBy: [...rows.sortBy, { id: Math.max(0, ...rows.sortBy.map((rule) => rule.id)) + 1, outputColumn: "", direction: "ASC" }] })} type="button" variant="outline"><Plus aria-hidden="true" />Agregar ordenamiento</Button>
+      {!hasOutputColumns ? <p className="text-sm text-muted-foreground">Primero configur\u00e1 al menos una columna de salida v\u00e1lida.</p> : null}
+      {rows.sortBy.map((rule, index) => <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_10rem_auto]" key={rule.id}>
+        {!hasOutputColumns || !outputColumns.includes(rule.outputColumn) ? <p className="text-sm text-destructive md:col-span-3">La columna de salida elegida ya no est\u00e1 disponible.</p> : null}
+        <select aria-label={`Columna de ordenamiento ${index + 1}`} className="h-8 min-w-0 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50" disabled={disabled || !hasOutputColumns} onChange={(event) => updateSort(rule.id, { outputColumn: event.target.value })} value={rule.outputColumn}>
+          <option disabled value="">Columna de salida</option>{outputColumns.map((column) => <option key={column} value={column}>{column}</option>)}
+        </select>
+        <select aria-label={`Direccion de ordenamiento ${index + 1}`} className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50" disabled={disabled || !hasOutputColumns} onChange={(event) => updateSort(rule.id, { direction: event.target.value as SortDirection })} value={rule.direction}>
+          <option value="ASC">Ascendente</option><option value="DESC">Descendente</option>
+        </select>
+        <Button aria-label={`Eliminar ordenamiento ${index + 1}`} disabled={disabled} onClick={() => onChange({ ...rows, sortBy: rows.sortBy.filter((item) => item.id !== rule.id) })} size="icon" type="button" variant="outline"><Trash2 aria-hidden="true" /></Button>
+      </div>)}
+      <Button disabled={disabled || !hasOutputColumns || rows.sortBy.length >= 3} onClick={() => onChange({ ...rows, sortBy: [...rows.sortBy, { id: Math.max(0, ...rows.sortBy.map((rule) => rule.id)) + 1, outputColumn: "", direction: "ASC" }] })} type="button" variant="outline"><Plus aria-hidden="true" />Agregar ordenamiento</Button>
     </section>
   </div>;
 }

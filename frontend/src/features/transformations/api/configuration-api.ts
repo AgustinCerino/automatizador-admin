@@ -1,6 +1,7 @@
 import type {
   TransformationExcelConfig,
   TransformationExcelConfigRead,
+  TransformationValidationRead,
 } from "@/features/transformations/types";
 import { apiFetch } from "@/lib/api/client";
 import { isPositiveInteger } from "@/lib/identifiers";
@@ -27,6 +28,15 @@ export function saveTransformationConfiguration(
   assertExecutionId(executionId);
   return apiFetch(`/api/backend/transformaciones/${executionId}/configuracion`, {
     body: configuration,
+    method: "POST",
+  });
+}
+
+export function validateTransformationConfiguration(
+  executionId: number,
+): Promise<TransformationValidationRead> {
+  assertExecutionId(executionId);
+  return apiFetch(`/api/backend/transformaciones/${executionId}/validar`, {
     method: "POST",
   });
 }

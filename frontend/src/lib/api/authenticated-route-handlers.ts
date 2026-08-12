@@ -614,6 +614,31 @@ export async function handleSaveTransformationConfigurationRequest(
   return result.ok ? jsonResponse(result.value) : result.response;
 }
 
+export async function handleValidateTransformationConfigurationRequest(
+  request: Request,
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  if (!isSameOriginRequest(request)) {
+    return errorResponse(ERROR_PAYLOADS.invalidOrigin, 403);
+  }
+
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+
+  const result = await callBackend(
+    `/transformaciones-excel/${executionId}/validar?preview_limit=20`,
+    sessionResult.value,
+    dependencies,
+    { headers: { Accept: "application/json" }, method: "POST" },
+    { 400: ERROR_PAYLOADS.incompatibleTransformation },
+  );
+  return result.ok ? jsonResponse(result.value) : result.response;
+}
+
 const TRANSFORMATION_SOURCE_FILE_TYPE = "FUENTE";
 const TRANSFORMATION_SOURCE_EXTENSIONS = new Set([".csv", ".xls", ".xlsx"]);
 

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getTransformationConfiguration,
   saveTransformationConfiguration,
+  validateTransformationConfiguration,
 } from "@/features/transformations/api/configuration-api";
 import type { TransformationExcelConfig } from "@/features/transformations/types";
 import {
@@ -39,6 +40,18 @@ export function useSaveTransformationConfiguration(executionId: number) {
         queryClient.invalidateQueries({ queryKey: queryKeys.transformations.configuration(executionId) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.transformations.summary(executionId) }),
       ]);
+    },
+  });
+}
+
+export function useValidateTransformationConfiguration(executionId: number) {
+  const queryClient = useQueryClient();
+  const handleSessionExpired = useSessionExpiredHandler();
+  return useMutation({
+    mutationFn: () => validateTransformationConfiguration(executionId),
+    onError: handleSessionExpired,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.transformations.summary(executionId) });
     },
   });
 }

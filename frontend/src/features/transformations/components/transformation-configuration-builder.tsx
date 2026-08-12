@@ -10,11 +10,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useSaveTransformationConfiguration, useTransformationConfigurationQuery } from "@/features/transformations/api/use-configuration";
+import { useSaveTransformationConfiguration, useTransformationConfigurationQuery, useValidateTransformationConfiguration } from "@/features/transformations/api/use-configuration";
 import { useTransformationSourceStructureQuery } from "@/features/transformations/api/use-source-files";
 import { EMPTY_ROWS, type DraftRows, RowRulesEditor } from "@/features/transformations/components/row-rules-editor";
+import { TransformationValidationPanel } from "@/features/transformations/components/transformation-validation-panel";
 import { readTransformationSourceDraft, resolveTransformationSourceDraft } from "@/features/transformations/source-draft";
-import type { TransformationExcelConfig, TransformationSummary } from "@/features/transformations/types";
+import type { TransformationExcelConfig, TransformationSummary, TransformationValidationRead } from "@/features/transformations/types";
 import { ApiError } from "@/lib/api/errors";
 
 type Operation = "SOURCE" | "CONSTANT" | "CONCAT" | "ARITHMETIC" | "VALUE_MAP";
@@ -75,6 +76,13 @@ function getErrorMessage(error: unknown): string {
   return "No pudimos guardar la configuraci\u00f3n.";
 }
 
+function getValidationErrorMessage(error: unknown): string {
+  if (!(error instanceof ApiError)) return "No pudimos comunicarnos con el servidor para validar.";
+  if (error.status === 400 || error.status === 409 || error.status === 422) return error.message;
+  if (error.status === 503) return "El servidor no está disponible.";
+  return "No pudimos validar la transformación.";
+}
+
 function validColumn(column: DraftColumn): boolean {
   if (!column.outputColumn.trim()) return false;
   if (column.operation === "SOURCE") return Boolean(column.sourceColumn);
@@ -114,23 +122,30 @@ export function TransformationConfigurationBuilder({ summary }: { summary: Trans
   const persistedConfiguration = configurationQuery.data?.configuracion;
   const structureQuery = useTransformationSourceStructureQuery({ executionId: summary.ejecucion_id, fileId: sourceDraft.sourceFileId, headerRow: sourceDraft.headerRow, sheet: sourceDraft.sheet });
   const saveMutation = useSaveTransformationConfiguration(summary.ejecucion_id);
+  const validateMutation = useValidateTransformationConfiguration(summary.ejecucion_id);
   const [columns, setColumns] = useState<DraftColumn[]>(() => [emptyColumn(1)]);
   const [rows, setRows] = useState<DraftRows>(EMPTY_ROWS);
   const [nextId, setNextId] = useState(2);
   const initializedConfiguration = useRef<TransformationExcelConfig | null>(null);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const [validationResult, setValidationResult] = useState<TransformationValidationRead | null>(null);
 
   useEffect(() => {
     if (!persistedConfiguration || initializedConfiguration.current === persistedConfiguration) return;
     initializedConfiguration.current = persistedConfiguration;
     const initialColumns = draftColumnsFromConfiguration(persistedConfiguration);
-    queueMicrotask(() => { setColumns(initialColumns); setRows(draftRowsFromConfiguration(persistedConfiguration)); setNextId(initialColumns.length + 1); });
+    queueMicrotask(() => { setColumns(initialColumns); setRows(draftRowsFromConfiguration(persistedConfiguration)); setNextId(initialColumns.length + 1); setIsDirty(false); });
   }, [persistedConfiguration]);
 
   const sourceColumns = structureQuery.data?.columns.map((column) => column.name) ?? [];
-  const outputColumns = columns.map((column) => column.outputColumn.trim()).filter(Boolean);
+  const outputColumns = useMemo(
+    () => columns.filter(validColumn).map((column) => column.outputColumn.trim()),
+    [columns],
+  );
   const canEdit = summary.can_edit_configuration && (!summary.has_configuration || configurationQuery.isSuccess);
-  const updateColumn = (id: number, update: Partial<DraftColumn>) => { setColumns((current) => current.map((column) => column.id === id ? { ...column, ...update } : column)); setValidationMessage(null); };
+  const markDirty = () => { setIsDirty(true); setValidationMessage(null); };
+  const updateColumn = (id: number, update: Partial<DraftColumn>) => { setColumns((current) => current.map((column) => column.id === id ? { ...column, ...update } : column)); markDirty(); };
   const changeOperation = (id: number, operation: Operation) => updateColumn(id, { ...emptyColumn(id), operation, outputColumn: columns.find((column) => column.id === id)?.outputColumn ?? "" });
   const updateConcatPart = (column: DraftColumn, partId: number, update: Partial<DraftConcatPart>) => updateColumn(column.id, { concatParts: column.concatParts.map((part) => part.id === partId ? { ...part, ...update } : part) });
   const updateOperand = (column: DraftColumn, side: "leftOperand" | "rightOperand", update: Partial<DraftOperand>) => updateColumn(column.id, { [side]: { ...column[side], ...update } });
@@ -158,7 +173,12 @@ export function TransformationConfigurationBuilder({ summary }: { summary: Trans
       }, source,
     };
     setValidationMessage(null);
-    try { await saveMutation.mutateAsync(configuration); } catch { /* rendered below */ }
+    try { await saveMutation.mutateAsync(configuration); setIsDirty(false); setValidationResult(null); } catch { /* rendered below */ }
+  }
+
+  async function validate() {
+    if (isDirty || validateMutation.isPending) return;
+    try { setValidationResult(await validateMutation.mutateAsync()); } catch { /* rendered below */ }
   }
 
   return <Card><CardHeader><CardTitle><h2>Columnas de salida</h2></CardTitle><CardDescription>DefinÃ­ las columnas del archivo resultante a partir de la fuente inspeccionada.</CardDescription></CardHeader><CardContent className="space-y-5">
@@ -170,7 +190,7 @@ export function TransformationConfigurationBuilder({ summary }: { summary: Trans
     <div className="space-y-4">{columns.map((column, index) => <fieldset className="grid gap-3 rounded-lg border p-4 md:grid-cols-[minmax(0,1fr)_11rem_auto] md:items-end" key={column.id}><legend className="px-1 text-sm font-medium">Columna {index + 1}</legend>
       <div className="space-y-2"><Label htmlFor={`output-${column.id}`}>Nombre de salida</Label><Input disabled={!canEdit} id={`output-${column.id}`} onChange={(event) => updateColumn(column.id, { outputColumn: event.target.value })} value={column.outputColumn} /></div>
       <div className="space-y-2"><Label>Operaci{"\u00f3"}n</Label><Select disabled={!canEdit} onValueChange={(value) => changeOperation(column.id, value as Operation)} value={column.operation}><SelectTrigger aria-label={`Operaci${"\u00f3"}n de columna ${index + 1}`}><SelectValue /></SelectTrigger><SelectContent>{OPERATIONS.map((operation) => <SelectItem key={operation} value={operation}>{operation}</SelectItem>)}</SelectContent></Select></div>
-      <Button aria-label={`Eliminar columna ${index + 1}`} disabled={!canEdit} onClick={() => setColumns((current) => current.filter((item) => item.id !== column.id))} size="icon" type="button" variant="outline"><Trash2 aria-hidden="true" /></Button>
+      <Button aria-label={`Eliminar columna ${index + 1}`} disabled={!canEdit} onClick={() => { setColumns((current) => current.filter((item) => item.id !== column.id)); markDirty(); }} size="icon" type="button" variant="outline"><Trash2 aria-hidden="true" /></Button>
       <div className="space-y-3 md:col-span-3">
         {column.operation === "SOURCE" ? <SourceSelect column={column} disabled={!canEdit || !sourceColumns.length} onChange={(sourceColumn) => updateColumn(column.id, { sourceColumn })} sourceColumns={sourceColumns} /> : null}
         {column.operation === "CONSTANT" ? <TextInput column={column} disabled={!canEdit} label="Valor constante" onChange={(value) => updateColumn(column.id, { value })} /> : null}
@@ -179,11 +199,12 @@ export function TransformationConfigurationBuilder({ summary }: { summary: Trans
         {column.operation === "VALUE_MAP" ? <ValueMapEditor column={column} disabled={!canEdit} onAdd={() => updateColumn(column.id, { mapping: [...column.mapping, { id: Math.max(0, ...column.mapping.map((mapping) => mapping.id)) + 1, key: "", value: "" }] })} onMappingChange={(mappingId, update) => updateMapping(column, mappingId, update)} onPolicyChange={(unmappedPolicy) => updateColumn(column.id, { unmappedPolicy })} onRemove={(mappingId) => updateColumn(column.id, { mapping: column.mapping.filter((mapping) => mapping.id !== mappingId) })} onSourceChange={(sourceColumn) => updateColumn(column.id, { sourceColumn })} onDefaultChange={(defaultValue) => updateColumn(column.id, { defaultValue })} sourceColumns={sourceColumns} /> : null}
       </div>
     </fieldset>)}</div>
-    <RowRulesEditor disabled={!canEdit} onChange={(nextRows) => { setRows(nextRows); setValidationMessage(null); }} outputColumns={outputColumns} rows={rows} sourceColumns={sourceColumns} />
+    <RowRulesEditor disabled={!canEdit} onChange={(nextRows) => { setRows(nextRows); markDirty(); }} outputColumns={outputColumns} rows={rows} sourceColumns={sourceColumns} />
     {validationMessage ? <p className="text-sm text-destructive" role="alert">{validationMessage}</p> : null}
     {saveMutation.isError ? <p className="text-sm text-destructive" role="alert">{getErrorMessage(saveMutation.error)}</p> : null}
     {saveMutation.isSuccess ? <p className="text-sm text-success-foreground" role="status">ConfiguraciÃ³n guardada.</p> : null}
-    <div className="flex flex-wrap gap-3"><Button disabled={!canEdit} onClick={() => { setColumns((current) => [...current, emptyColumn(nextId)]); setNextId((current) => current + 1); }} type="button" variant="outline"><Plus aria-hidden="true" />Agregar columna</Button><Button disabled={!canEdit || saveMutation.isPending || !sourceColumns.length} onClick={() => void save()} type="button"><Save aria-hidden="true" />{saveMutation.isPending ? "Guardandoâ€¦" : "Guardar configuraciÃ³n"}</Button></div>
+    <div className="flex flex-wrap gap-3"><Button disabled={!canEdit} onClick={() => { setColumns((current) => [...current, emptyColumn(nextId)]); setNextId((current) => current + 1); markDirty(); }} type="button" variant="outline"><Plus aria-hidden="true" />Agregar columna</Button><Button disabled={!canEdit || saveMutation.isPending || !sourceColumns.length} onClick={() => void save()} type="button"><Save aria-hidden="true" />{saveMutation.isPending ? "Guardandoâ€¦" : "Guardar configuraciÃ³n"}</Button></div>
+    <TransformationValidationPanel errorMessage={validateMutation.isError ? getValidationErrorMessage(validateMutation.error) : null} isDirty={isDirty} isPending={validateMutation.isPending} isSaved={summary.has_configuration || saveMutation.isSuccess} onValidate={() => void validate()} result={validationResult} />
   </CardContent></Card>;
 }
 

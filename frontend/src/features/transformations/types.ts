@@ -27,6 +27,10 @@ export type TransformationExcelConfig =
   components["schemas"]["TransformacionExcelConfig"];
 export type TransformationExcelConfigRead =
   components["schemas"]["TransformacionExcelConfigRead"];
+export type TransformationValidationRead =
+  components["schemas"]["TransformacionExcelValidationRead"];
+export type TransformationValidationIssue =
+  components["schemas"]["TransformacionExcelValidationIssueRead"];
 
 export interface TransformationCapabilities {
   canDownload: boolean;
