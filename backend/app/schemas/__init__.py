@@ -2,6 +2,7 @@ from app.schemas.auth import LoginRequest, TokenResponse
 from app.schemas.archivo_preview import ArchivoPreviewRead
 from app.schemas.archivo import ArchivoRead
 from app.schemas.cliente import ClienteCreate, ClienteRead, ClienteUpdate
+from app.schemas.conciliacion_archivos import ConciliacionArchivosSelection
 from app.schemas.conciliacion_mapping import (
     ConciliacionMappingCreate,
     ConciliacionMappingRead,
@@ -73,6 +74,7 @@ __all__ = [
     "ClienteUpdate",
     "ConciliacionMappingCreate",
     "ConciliacionMappingRead",
+    "ConciliacionArchivosSelection",
     "EjecucionProcesoCreate",
     "EjecucionProcesoRead",
     "EjecucionProcesoUpdate",

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.api.routes.auth import get_current_user, require_admin
 from app.database.session import get_db
 from app.models import ResultadoConciliacion, Usuario
+from app.schemas.conciliacion_archivos import ConciliacionArchivosSelection
 from app.schemas.conciliacion_mapping import (
     ConciliacionMappingCreate,
     ConciliacionMappingRead,
@@ -17,6 +18,11 @@ from app.schemas.resultado_revision import (
     RechazarEjecucionRequest,
     ResultadoRevisionUpdate,
     RevisionResumenRead,
+)
+from app.services.conciliacion_archivos_service import (
+    ConciliacionArchivosError,
+    get_conciliacion_archivos,
+    save_conciliacion_archivos,
 )
 from app.services.conciliacion_service import (
     execute_reconciliation,
@@ -41,7 +47,13 @@ from app.services.conciliacion_mapping_service import (
 router = APIRouter(prefix="/conciliaciones", tags=["Conciliaciones"])
 
 
-def raise_mapping_http_error(exc: ConciliacionMappingError) -> None:
+def raise_mapping_http_error(
+    exc: ConciliacionMappingError | ConciliacionArchivosError,
+) -> None:
+    raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+def raise_archivos_http_error(exc: ConciliacionArchivosError) -> None:
     raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
@@ -65,6 +77,46 @@ def update_revision(
         raise_revision_http_error(exc)
 
 
+@router.get(
+    "/{ejecucion_id}/archivos",
+    response_model=ConciliacionArchivosSelection,
+)
+def read_selected_files(
+    ejecucion_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+) -> dict:
+    try:
+        return get_conciliacion_archivos(
+            db,
+            ejecucion_id,
+            current_user.cliente_id,
+        )
+    except ConciliacionArchivosError as exc:
+        raise_archivos_http_error(exc)
+
+
+@router.put(
+    "/{ejecucion_id}/archivos",
+    response_model=ConciliacionArchivosSelection,
+)
+def replace_selected_files(
+    ejecucion_id: int,
+    selection_in: ConciliacionArchivosSelection,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+) -> dict:
+    try:
+        return save_conciliacion_archivos(
+            db,
+            ejecucion_id,
+            current_user.cliente_id,
+            selection_in,
+        )
+    except ConciliacionArchivosError as exc:
+        raise_archivos_http_error(exc)
+
+
 @router.post(
     "/{ejecucion_id}/mapping",
     response_model=ConciliacionMappingRead,
@@ -76,8 +128,13 @@ def create_or_replace_mapping(
     current_user: Usuario = Depends(get_current_user),
 ) -> dict:
     try:
-        return save_conciliacion_mapping(db, ejecucion_id, mapping_in)
-    except ConciliacionMappingError as exc:
+        return save_conciliacion_mapping(
+            db,
+            ejecucion_id,
+            mapping_in,
+            current_user.cliente_id,
+        )
+    except (ConciliacionMappingError, ConciliacionArchivosError) as exc:
         raise_mapping_http_error(exc)
 
 
@@ -91,8 +148,12 @@ def read_mapping(
     current_user: Usuario = Depends(get_current_user),
 ) -> dict:
     try:
-        return get_conciliacion_mapping(db, ejecucion_id)
-    except ConciliacionMappingError as exc:
+        return get_conciliacion_mapping(
+            db,
+            ejecucion_id,
+            current_user.cliente_id,
+        )
+    except (ConciliacionMappingError, ConciliacionArchivosError) as exc:
         raise_mapping_http_error(exc)
 
 

@@ -1,7 +1,7 @@
 # Project Roadmap — Automatizador Admin
 
 Estado: planificación funcional autorizada
-Actualizado: **2026-08-10**
+Actualizado: **2026-08-21**
 Documento técnico asociado: [`PROJECT_HANDOFF.md`](PROJECT_HANDOFF.md)
 
 ## Propósito y uso
@@ -61,6 +61,7 @@ No expandir el esquema por defecto. Si una tarea requiere modelos, tablas o rela
 | Tarea 32 — Dry-run y validación frontend | Completado | Validación explícita sobre la configuración persistida, con preview dinámico, métricas, warnings, errores y estado stale al editar. |
 | Tarea 33 — Generación y descarga frontend | Completado | Generación explícita, recuperación del resultado persistido y descarga XLSX mediante el BFF con precondiciones de validación vigente. |
 | Tarea 34 — Hardening UX y cierre end-to-end de Transformación Excel | Completado | Validación integral del flujo frontend, hardening de estados, errores, accesibilidad, recuperación y regresiones desde carga hasta descarga. El flujo operativo principal frontend de Transformación Excel queda cerrado. |
+| Tarea 35A — Selección persistente de archivos de Conciliación Excel | Completado | Contrato backend persistente y multi-tenant para seleccionar y recuperar Archivo A/B antes del mapping; dependencia técnica de la Tarea 35 frontend. |
 
 ### Frontend posterior a Tarea 22
 

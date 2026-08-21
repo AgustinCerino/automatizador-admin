@@ -3,8 +3,12 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Archivo, EjecucionProceso
+from app.models import Archivo
 from app.schemas.conciliacion_mapping import ConciliacionMappingCreate
+from app.services.conciliacion_archivos_service import (
+    get_authorized_conciliation_execution,
+    get_explicit_selection,
+)
 from app.services.file_preview_service import (
     FilePreviewError,
     UnsupportedPreviewExtensionError,
@@ -22,15 +26,6 @@ class ConciliacionResourceNotFoundError(ConciliacionMappingError):
 
 class ConciliacionMappingNotFoundError(ConciliacionMappingError):
     status_code = 404
-
-
-def get_ejecucion(db: Session, ejecucion_id: int) -> EjecucionProceso:
-    ejecucion = db.execute(
-        select(EjecucionProceso).where(EjecucionProceso.id == ejecucion_id),
-    ).scalar_one_or_none()
-    if ejecucion is None:
-        raise ConciliacionResourceNotFoundError("Ejecución no encontrada")
-    return ejecucion
 
 
 def get_archivo(db: Session, archivo_id: int) -> Archivo:
@@ -82,8 +77,13 @@ def save_conciliacion_mapping(
     db: Session,
     ejecucion_id: int,
     mapping_in: ConciliacionMappingCreate,
+    cliente_id: int,
 ) -> dict[str, Any]:
-    ejecucion = get_ejecucion(db, ejecucion_id)
+    ejecucion = get_authorized_conciliation_execution(
+        db,
+        ejecucion_id,
+        cliente_id,
+    )
 
     if mapping_in.archivo_a_id == mapping_in.archivo_b_id:
         raise ConciliacionMappingError("Los archivos A y B deben ser distintos")
@@ -93,6 +93,16 @@ def save_conciliacion_mapping(
 
     validate_archivo_belongs_to_ejecucion(archivo_a, ejecucion_id)
     validate_archivo_belongs_to_ejecucion(archivo_b, ejecucion_id)
+
+    selected_files = get_explicit_selection(ejecucion)
+    mapping_files = {
+        "archivo_a_id": mapping_in.archivo_a_id,
+        "archivo_b_id": mapping_in.archivo_b_id,
+    }
+    if selected_files is not None and selected_files != mapping_files:
+        raise ConciliacionMappingError(
+            "Los archivos del mapping deben coincidir con la selección persistida",
+        )
 
     columnas_archivo_a = read_columns(archivo_a)
     columnas_archivo_b = read_columns(archivo_b)
@@ -131,8 +141,13 @@ def save_conciliacion_mapping(
 def get_conciliacion_mapping(
     db: Session,
     ejecucion_id: int,
+    cliente_id: int,
 ) -> dict[str, Any]:
-    ejecucion = get_ejecucion(db, ejecucion_id)
+    ejecucion = get_authorized_conciliation_execution(
+        db,
+        ejecucion_id,
+        cliente_id,
+    )
     mapping = (ejecucion.resumen_json or {}).get("conciliacion_mapping")
     if mapping is None:
         raise ConciliacionMappingNotFoundError(

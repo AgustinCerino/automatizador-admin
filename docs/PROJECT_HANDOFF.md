@@ -2,7 +2,7 @@
 
 ## Propósito del snapshot
 
-Actualizado el **2026-08-10**. Este documento es un snapshot técnico compacto y operativo del estado verificable del repositorio. Ante una contradicción, el código actual prevalece para describir el comportamiento implementado.
+Actualizado el **2026-08-21**. Este documento es un snapshot técnico compacto y operativo del estado verificable del repositorio. Ante una contradicción, el código actual prevalece para describir el comportamiento implementado.
 
 El detalle histórico previo se conserva en [`docs/archive/PROJECT_HANDOFF_2026-07-02.md`](archive/PROJECT_HANDOFF_2026-07-02.md).
 
@@ -27,14 +27,14 @@ Capacidades verificables:
 
 - autenticación JWT (`POST /auth/login`, `GET /auth/me`) y aislamiento por `cliente_id`;
 - carga y preview de CSV/XLS/XLSX;
-- conciliación Excel, revisión manual, aprobación/rechazo y exportación XLSX;
+- conciliación Excel, selección persistente de Archivo A/B en `resumen_json` mediante `GET/PUT /conciliaciones/{ejecucion_id}/archivos`, mapping compatible, revisión manual, aprobación/rechazo y exportación XLSX;
 - Transformación Excel: inspección, configuración persistida, dry-run, pipeline de transformación, generación/descarga de XLSX, plantillas, resumen operativo, trazabilidad y controles de seguridad.
 
 Para el detalle especializado de Transformación Excel, consultar [`backend/docs/TRANSFORMACION_EXCEL.md`](../backend/docs/TRANSFORMACION_EXCEL.md) sólo cuando la tarea afecte ese módulo.
 
 ### Pruebas backend
 
-Hay pruebas unitarias de Transformación Excel en `backend/tests/` y pruebas de integración en `backend/tests/integration/`. Las integrales requieren `TEST_DATABASE_URL` con una base PostgreSQL exclusiva, rechazan que coincida con `DATABASE_URL`, y se omiten si esa variable no está configurada.
+Hay pruebas unitarias de Conciliación y Transformación Excel en `backend/tests/`, además de pruebas de integración en `backend/tests/integration/`. Las integrales requieren `TEST_DATABASE_URL` con una base PostgreSQL exclusiva, rechazan que coincida con `DATABASE_URL`, y se omiten si esa variable no está configurada.
 
 ## Frontend
 
