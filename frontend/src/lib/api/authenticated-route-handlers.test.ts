@@ -5,7 +5,10 @@ import type { ExecutionRead } from "@/features/executions/types";
 import type { ProcessRead } from "@/features/processes/types";
 import {
   handleCreateExecutionRequest,
+  handleDownloadTransformationResultRequest,
   handleGetExecutionRequest,
+  handleGetTransformationResultRequest,
+  handleGenerateTransformationResultRequest,
   handleGetProcessRequest,
   handleListProcessExecutionsRequest,
   handleListProcessesRequest,
@@ -296,5 +299,33 @@ describe("BFF autenticado de procesos y ejecuciones", () => {
       message: "Tu sesión no es válida o ha vencido.",
     });
     expect(dependencies.clearSessionToken).toHaveBeenCalledOnce();
+  });
+
+  it("genera y consulta el resultado por los contratos backend reales", async () => {
+    const generated = { archivo_id: 9, checksum: "a".repeat(64), columnas_salida: ["Monto"], ejecucion_id: 31, estado_ejecucion: "COMPLETADO", extension: ".xlsx", generated_at: "2026-08-12T12:00:00Z", mime_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nombre_archivo: "resultado.xlsx", reused: false, size_bytes: 42, total_filas: 1 };
+    const fetchBackend = vi.fn<Dependencies["fetchBackend"]>()
+      .mockResolvedValueOnce(Response.json(generated))
+      .mockResolvedValueOnce(Response.json({ ...generated, reused: true }));
+    const dependencies = createDependencies({ fetchBackend });
+
+    const generate = await handleGenerateTransformationResultRequest(createRequest("/api/backend/transformaciones/31/generar"), "31", dependencies);
+    const result = await handleGetTransformationResultRequest("31", dependencies);
+
+    expect(generate.status).toBe(200);
+    expect(result.status).toBe(200);
+    expect(fetchBackend).toHaveBeenNthCalledWith(1, "/transformaciones-excel/31/generar", TOKEN, expect.objectContaining({ method: "POST" }));
+    expect(fetchBackend).toHaveBeenNthCalledWith(2, "/transformaciones-excel/31/resultado", TOKEN, expect.objectContaining({ method: "GET" }));
+  });
+
+  it("preserva el binario y los headers seguros al descargar", async () => {
+    const dependencies = createDependencies({
+      fetchBackend: vi.fn<Dependencies["fetchBackend"]>().mockResolvedValue(new Response(new Uint8Array([80, 75]), { headers: { "Content-Disposition": 'attachment; filename="resultado.xlsx"', "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" } })),
+    });
+    const response = await handleDownloadTransformationResultRequest("31", dependencies);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("spreadsheetml.sheet");
+    expect(response.headers.get("content-disposition")).toContain("resultado.xlsx");
+    await expect(response.arrayBuffer()).resolves.toEqual(new Uint8Array([80, 75]).buffer);
   });
 });

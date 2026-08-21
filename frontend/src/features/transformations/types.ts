@@ -29,6 +29,8 @@ export type TransformationExcelConfigRead =
   components["schemas"]["TransformacionExcelConfigRead"];
 export type TransformationValidationRead =
   components["schemas"]["TransformacionExcelValidationRead"];
+export type TransformationGenerationRead =
+  components["schemas"]["TransformacionExcelGenerationRead"];
 export type TransformationValidationIssue =
   components["schemas"]["TransformacionExcelValidationIssueRead"];
 

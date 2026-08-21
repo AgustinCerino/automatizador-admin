@@ -1,6 +1,7 @@
 import type {
   TransformationExcelConfig,
   TransformationExcelConfigRead,
+  TransformationGenerationRead,
   TransformationValidationRead,
 } from "@/features/transformations/types";
 import { apiFetch } from "@/lib/api/client";
@@ -38,5 +39,23 @@ export function validateTransformationConfiguration(
   assertExecutionId(executionId);
   return apiFetch(`/api/backend/transformaciones/${executionId}/validar`, {
     method: "POST",
+  });
+}
+
+export function generateTransformationResult(
+  executionId: number,
+): Promise<TransformationGenerationRead> {
+  assertExecutionId(executionId);
+  return apiFetch(`/api/backend/transformaciones/${executionId}/generar`, {
+    method: "POST",
+  });
+}
+
+export function getTransformationResult(
+  executionId: number,
+): Promise<TransformationGenerationRead> {
+  assertExecutionId(executionId);
+  return apiFetch(`/api/backend/transformaciones/${executionId}/resultado`, {
+    method: "GET",
   });
 }

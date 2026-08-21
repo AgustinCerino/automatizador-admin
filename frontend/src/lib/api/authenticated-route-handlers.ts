@@ -639,6 +639,82 @@ export async function handleValidateTransformationConfigurationRequest(
   return result.ok ? jsonResponse(result.value) : result.response;
 }
 
+export async function handleGenerateTransformationResultRequest(
+  request: Request,
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  if (!isSameOriginRequest(request)) return errorResponse(ERROR_PAYLOADS.invalidOrigin, 403);
+
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+
+  const result = await callBackend(
+    `/transformaciones-excel/${executionId}/generar`,
+    sessionResult.value,
+    dependencies,
+    { headers: { Accept: "application/json" }, method: "POST" },
+    { 400: ERROR_PAYLOADS.incompatibleTransformation },
+  );
+  return result.ok ? jsonResponse(result.value) : result.response;
+}
+
+export async function handleGetTransformationResultRequest(
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+
+  const result = await callBackend(
+    `/transformaciones-excel/${executionId}/resultado`,
+    sessionResult.value,
+    dependencies,
+    { headers: { Accept: "application/json" }, method: "GET" },
+    { 400: ERROR_PAYLOADS.incompatibleTransformation },
+  );
+  return result.ok ? jsonResponse(result.value) : result.response;
+}
+
+export async function handleDownloadTransformationResultRequest(
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+
+  let backendResponse: Response;
+  try {
+    backendResponse = await dependencies.fetchBackend(
+      `/transformaciones-excel/${executionId}/resultado/descargar`,
+      sessionResult.value.token,
+      { headers: { Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }, method: "GET" },
+    );
+  } catch (error) {
+    const unavailable = error instanceof BackendRequestError && error.kind !== "configuration";
+    return errorResponse(unavailable ? ERROR_PAYLOADS.unavailable : ERROR_PAYLOADS.internal, unavailable ? 503 : 500);
+  }
+
+  if (!backendResponse.ok) return normalizeBackendFailure(backendResponse, dependencies, { 400: ERROR_PAYLOADS.incompatibleTransformation });
+
+  const headers = new Headers(PRIVATE_NO_STORE_HEADERS);
+  for (const header of ["content-type", "content-disposition"]) {
+    const value = backendResponse.headers.get(header);
+    if (value) headers.set(header, value);
+  }
+  headers.set("X-Content-Type-Options", "nosniff");
+  return new Response(backendResponse.body, { headers, status: backendResponse.status });
+}
+
 const TRANSFORMATION_SOURCE_FILE_TYPE = "FUENTE";
 const TRANSFORMATION_SOURCE_EXTENSIONS = new Set([".csv", ".xls", ".xlsx"]);
 

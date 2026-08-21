@@ -25,6 +25,9 @@ vi.mock("@/features/transformations/api/use-source-files", () => ({
 vi.mock("@/features/transformations/components/transformation-validation-panel", () => ({
   TransformationValidationPanel: () => null,
 }));
+vi.mock("@/features/transformations/components/transformation-generation-panel", () => ({
+  TransformationGenerationPanel: () => null,
+}));
 
 const configurationQueryMock = vi.mocked(useTransformationConfigurationQuery);
 const saveMock = vi.mocked(useSaveTransformationConfiguration);

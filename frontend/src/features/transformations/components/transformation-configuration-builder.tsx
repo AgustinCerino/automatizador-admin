@@ -14,6 +14,7 @@ import { useSaveTransformationConfiguration, useTransformationConfigurationQuery
 import { useTransformationSourceStructureQuery } from "@/features/transformations/api/use-source-files";
 import { EMPTY_ROWS, type DraftRows, RowRulesEditor } from "@/features/transformations/components/row-rules-editor";
 import { TransformationValidationPanel } from "@/features/transformations/components/transformation-validation-panel";
+import { TransformationGenerationPanel } from "@/features/transformations/components/transformation-generation-panel";
 import { readTransformationSourceDraft, resolveTransformationSourceDraft } from "@/features/transformations/source-draft";
 import type { TransformationExcelConfig, TransformationSummary, TransformationValidationRead } from "@/features/transformations/types";
 import { ApiError } from "@/lib/api/errors";
@@ -130,6 +131,12 @@ export function TransformationConfigurationBuilder({ summary }: { summary: Trans
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [validationResult, setValidationResult] = useState<TransformationValidationRead | null>(null);
+  const sourceSelectionChanged = Boolean(persistedConfiguration?.source && (
+    persistedConfiguration.source.archivo_id !== sourceDraft.sourceFileId ||
+    persistedConfiguration.source.header_row !== sourceDraft.headerRow ||
+    persistedConfiguration.source.sheet_name !== sourceDraft.sheet
+  ));
+  const isDraftDirty = isDirty || sourceSelectionChanged;
 
   useEffect(() => {
     if (!persistedConfiguration || initializedConfiguration.current === persistedConfiguration) return;
@@ -155,7 +162,7 @@ export function TransformationConfigurationBuilder({ summary }: { summary: Trans
     if (!sourceDraft.sourceFileId) return setValidationMessage("Seleccion\u00e1 un archivo fuente antes de guardar.");
     if (!columns.length) return setValidationMessage("Agreg\u00e1 al menos una columna de salida.");
     if (columns.some((column) => !validColumn(column)) || !validRows(rows, sourceColumns, outputColumns)) return setValidationMessage("Complet\u00e1 las columnas y reglas de filas antes de guardar.");
-    const source = persistedConfiguration?.source ?? { archivo_id: sourceDraft.sourceFileId, header_row: sourceDraft.headerRow, sheet_name: sourceDraft.sheet };
+    const source = { archivo_id: sourceDraft.sourceFileId, header_row: sourceDraft.headerRow, sheet_name: sourceDraft.sheet };
     const configuration: TransformationExcelConfig = {
       ...(persistedConfiguration?.output ? { output: persistedConfiguration.output } : {}),
       output_columns: columns.map((column, index) => {
@@ -177,7 +184,7 @@ export function TransformationConfigurationBuilder({ summary }: { summary: Trans
   }
 
   async function validate() {
-    if (isDirty || validateMutation.isPending) return;
+    if (isDraftDirty || validateMutation.isPending) return;
     try { setValidationResult(await validateMutation.mutateAsync()); } catch { /* rendered below */ }
   }
 
@@ -204,7 +211,8 @@ export function TransformationConfigurationBuilder({ summary }: { summary: Trans
     {saveMutation.isError ? <p className="text-sm text-destructive" role="alert">{getErrorMessage(saveMutation.error)}</p> : null}
     {saveMutation.isSuccess ? <p className="text-sm text-success-foreground" role="status">ConfiguraciÃ³n guardada.</p> : null}
     <div className="flex flex-wrap gap-3"><Button disabled={!canEdit} onClick={() => { setColumns((current) => [...current, emptyColumn(nextId)]); setNextId((current) => current + 1); markDirty(); }} type="button" variant="outline"><Plus aria-hidden="true" />Agregar columna</Button><Button disabled={!canEdit || saveMutation.isPending || !sourceColumns.length} onClick={() => void save()} type="button"><Save aria-hidden="true" />{saveMutation.isPending ? "Guardandoâ€¦" : "Guardar configuraciÃ³n"}</Button></div>
-    <TransformationValidationPanel errorMessage={validateMutation.isError ? getValidationErrorMessage(validateMutation.error) : null} isDirty={isDirty} isPending={validateMutation.isPending} isSaved={summary.has_configuration || saveMutation.isSuccess} onValidate={() => void validate()} result={validationResult} />
+    <TransformationValidationPanel errorMessage={validateMutation.isError ? getValidationErrorMessage(validateMutation.error) : null} isDirty={isDraftDirty} isPending={validateMutation.isPending} isSaved={summary.has_configuration || saveMutation.isSuccess} onValidate={() => void validate()} result={validationResult} />
+    <TransformationGenerationPanel isDirty={isDraftDirty} summary={summary} validationIsValid={Boolean(validationResult?.valid)} />
   </CardContent></Card>;
 }
 
