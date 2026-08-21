@@ -4,6 +4,8 @@ import type {
   ConciliationFile,
   ConciliationFilePreview,
   ConciliationFileSelection,
+  ConciliationMapping,
+  ConciliationMappingCreate,
 } from "@/features/conciliations/types";
 import type {
   TransformationSourceFile,
@@ -180,6 +182,43 @@ export function parseConciliationFileSelection(
     archivo_a_id: value.archivo_a_id,
     archivo_b_id: value.archivo_b_id,
   };
+}
+
+function isConciliationMappingCreate(
+  value: Record<string, unknown>,
+): value is ConciliationMappingCreate {
+  return (
+    isPositiveInteger(value.archivo_a_id) &&
+    isPositiveInteger(value.archivo_b_id) &&
+    value.archivo_a_id !== value.archivo_b_id &&
+    typeof value.columna_clave_archivo_a === "string" &&
+    value.columna_clave_archivo_a.length > 0 &&
+    typeof value.columna_clave_archivo_b === "string" &&
+    value.columna_clave_archivo_b.length > 0 &&
+    typeof value.columna_importe_archivo_a === "string" &&
+    value.columna_importe_archivo_a.length > 0 &&
+    typeof value.columna_importe_archivo_b === "string" &&
+    value.columna_importe_archivo_b.length > 0 &&
+    typeof value.tolerancia_importe === "number" &&
+    Number.isFinite(value.tolerancia_importe) &&
+    typeof value.detectar_duplicados === "boolean"
+  );
+}
+
+export function parseConciliationMapping(
+  value: unknown,
+): ConciliationMapping | undefined {
+  if (!isRecord(value)) return undefined;
+  const record = value;
+  if (
+    !Array.isArray(record.columnas_archivo_a) ||
+    !record.columnas_archivo_a.every((column) => typeof column === "string") ||
+    !Array.isArray(record.columnas_archivo_b) ||
+    !record.columnas_archivo_b.every((column) => typeof column === "string")
+  ) return undefined;
+  if (!isConciliationMappingCreate(record)) return undefined;
+
+  return value as ConciliationMapping;
 }
 
 export function parseConciliationFilePreview(

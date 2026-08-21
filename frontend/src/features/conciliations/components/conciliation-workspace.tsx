@@ -26,9 +26,13 @@ import {
 } from "@/components/ui/table";
 import {
   useConciliationFilesQuery,
+  useConciliationMappingQuery,
+  useConciliationPreviewQuery,
   useConciliationSelectionQuery,
+  useSaveConciliationMapping,
   useSaveConciliationSelection,
 } from "@/features/conciliations/api/use-conciliation-files";
+import { ConciliationMappingEditor } from "@/features/conciliations/components/conciliation-mapping-editor";
 import { ConciliationFileSlot } from "@/features/conciliations/components/conciliation-file-slot";
 import type { ExecutionRead } from "@/features/executions/types";
 import { useExecutionQuery } from "@/features/executions/api/use-execution-query";
@@ -75,6 +79,8 @@ function ConciliationWorkspaceContent({
   const filesQuery = useConciliationFilesQuery(execution.id);
   const selectionQuery = useConciliationSelectionQuery(execution.id);
   const saveMutation = useSaveConciliationSelection(execution.id);
+  const mappingQuery = useConciliationMappingQuery(execution.id);
+  const saveMappingMutation = useSaveConciliationMapping(execution.id);
   const [draftOverrides, setDraftOverrides] = useState<DraftOverrides>({});
 
   const persistedAId = selectionQuery.data?.archivo_a_id ?? null;
@@ -96,6 +102,8 @@ function ConciliationWorkspaceContent({
     draftBId !== null &&
     !sameFile &&
     !saveMutation.isPending;
+  const previewAQuery = useConciliationPreviewQuery(execution.id, persistedAId);
+  const previewBQuery = useConciliationPreviewQuery(execution.id, persistedBId);
 
   async function saveSelection() {
     if (!canSave || draftAId === null || draftBId === null) return;
@@ -241,6 +249,26 @@ function ConciliationWorkspaceContent({
               Selección A/B guardada correctamente.
             </p>
           ) : null}
+
+          <ConciliationMappingEditor
+            archivoAId={persistedAId}
+            archivoBId={persistedBId}
+            columnsA={previewAQuery.data?.columns ?? null}
+            columnsB={previewBQuery.data?.columns ?? null}
+            columnsError={previewAQuery.error ?? previewBQuery.error}
+            mapping={mappingQuery.data ?? null}
+            mappingError={mappingQuery.error}
+            mappingLoading={mappingQuery.isPending}
+            mappingSelectionDirty={isDirty}
+            onRetry={() => void mappingQuery.refetch()}
+            onRetryColumns={() => {
+              void previewAQuery.refetch();
+              void previewBQuery.refetch();
+            }}
+            onSave={saveMappingMutation.mutateAsync}
+            saveError={saveMappingMutation.error}
+            saving={saveMappingMutation.isPending}
+          />
         </>
       ) : null}
     </div>

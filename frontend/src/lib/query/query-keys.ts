@@ -9,6 +9,8 @@ export const queryKeys = {
       ["conciliations", "detail", executionId, "files", fileId, "preview"] as const,
     selection: (executionId: number) =>
       ["conciliations", "detail", executionId, "selection"] as const,
+    mapping: (executionId: number) =>
+      ["conciliations", "detail", executionId, "mapping"] as const,
   },
   executions: {
     all: ["executions"] as const,

@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CurrentUser } from "@/features/auth/types";
 import {
+  handleGetConciliationMappingRequest,
   handleGetConciliationPreviewRequest,
   handleGetConciliationSelectionRequest,
   handleListConciliationFilesRequest,
   handleSaveConciliationSelectionRequest,
+  handleSaveConciliationMappingRequest,
   handleUploadConciliationFileRequest,
 } from "@/lib/api/authenticated-route-handlers";
 
@@ -53,6 +55,18 @@ const FILE = {
   tipo_archivo: "ENTRADA_CONCILIACION",
   uploaded_at: "2026-08-21T12:00:00Z",
 };
+const MAPPING = {
+  archivo_a_id: 8,
+  archivo_b_id: 9,
+  columna_clave_archivo_a: "Factura",
+  columna_clave_archivo_b: "Comprobante",
+  columna_importe_archivo_a: "Importe",
+  columna_importe_archivo_b: "Monto",
+  columnas_archivo_a: ["Factura", "Importe"],
+  columnas_archivo_b: ["Comprobante", "Monto"],
+  detectar_duplicados: true,
+  tolerancia_importe: 0,
+};
 
 function createDependencies(responses: Response[]): Dependencies {
   return {
@@ -71,6 +85,14 @@ function writeRequest(body: unknown, method = "PUT"): Request {
     body: JSON.stringify(body),
     headers: { "Content-Type": "application/json", Origin: "http://localhost" },
     method,
+  });
+}
+
+function mappingRequest(body: unknown): Request {
+  return new Request("http://localhost/api/backend/conciliaciones/31/mapping", {
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json", Origin: "http://localhost" },
+    method: "POST",
   });
 }
 
@@ -217,5 +239,62 @@ describe("BFF de archivos de conciliación", () => {
       TOKEN,
       { headers: { Accept: "application/json" }, method: "GET" },
     );
+  });
+
+  it("recupera el mapping persistido y distingue su ausencia", async () => {
+    const selected = createDependencies([
+      Response.json(EXECUTION),
+      Response.json(PROCESS),
+      Response.json(MAPPING),
+    ]);
+    await expect(
+      (await handleGetConciliationMappingRequest("31", selected)).json(),
+    ).resolves.toEqual(MAPPING);
+
+    const empty = createDependencies([
+      Response.json(EXECUTION),
+      Response.json(PROCESS),
+      Response.json({}, { status: 404 }),
+    ]);
+    const response = await handleGetConciliationMappingRequest("31", empty);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "CONCILIATION_MAPPING_NOT_FOUND",
+    });
+  });
+
+  it("guarda el contrato exacto y rechaza un mapping incompleto", async () => {
+    const dependencies = createDependencies([
+      Response.json(EXECUTION),
+      Response.json(PROCESS),
+      Response.json(MAPPING),
+    ]);
+    const payload = {
+      archivo_a_id: 8,
+      archivo_b_id: 9,
+      columna_clave_archivo_a: "Factura",
+      columna_clave_archivo_b: "Comprobante",
+      columna_importe_archivo_a: "Importe",
+      columna_importe_archivo_b: "Monto",
+      detectar_duplicados: true,
+      tolerancia_importe: 0,
+    };
+    const response = await handleSaveConciliationMappingRequest(
+      mappingRequest(payload),
+      "31",
+      dependencies,
+    );
+    expect(response.status).toBe(200);
+    const saveCall = vi.mocked(dependencies.fetchBackend).mock.calls[2];
+    expect(saveCall[0]).toBe("/conciliaciones/31/mapping");
+    expect(JSON.parse(String(saveCall[2]?.body))).toEqual(payload);
+
+    const invalidDependencies = createDependencies([]);
+    const invalid = await handleSaveConciliationMappingRequest(
+      mappingRequest({ archivo_a_id: 8 }),
+      "31",
+      invalidDependencies,
+    );
+    expect(invalid.status).toBe(422);
+    expect(invalidDependencies.fetchBackend).not.toHaveBeenCalled();
   });
 });

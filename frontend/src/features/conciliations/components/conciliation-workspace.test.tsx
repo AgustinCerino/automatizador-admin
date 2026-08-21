@@ -3,7 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   useConciliationFilesQuery,
+  useConciliationMappingQuery,
+  useConciliationPreviewQuery,
   useConciliationSelectionQuery,
+  useSaveConciliationMapping,
   useSaveConciliationSelection,
 } from "@/features/conciliations/api/use-conciliation-files";
 import { ConciliationWorkspace } from "@/features/conciliations/components/conciliation-workspace";
@@ -18,8 +21,14 @@ vi.mock("@/features/processes/api/use-process-query", () => ({
 }));
 vi.mock("@/features/conciliations/api/use-conciliation-files", () => ({
   useConciliationFilesQuery: vi.fn(),
+  useConciliationMappingQuery: vi.fn(),
+  useConciliationPreviewQuery: vi.fn(),
   useConciliationSelectionQuery: vi.fn(),
+  useSaveConciliationMapping: vi.fn(),
   useSaveConciliationSelection: vi.fn(),
+}));
+vi.mock("@/features/conciliations/components/conciliation-mapping-editor", () => ({
+  ConciliationMappingEditor: () => <section aria-label="Mapping" />,
 }));
 vi.mock("@/features/conciliations/components/conciliation-file-slot", () => ({
   ConciliationFileSlot: ({ onSelect, role, selectedId }: {
@@ -39,7 +48,10 @@ vi.mock("@/features/conciliations/components/conciliation-file-slot", () => ({
 const useExecutionMock = vi.mocked(useExecutionQuery);
 const useProcessMock = vi.mocked(useProcessQuery);
 const useFilesMock = vi.mocked(useConciliationFilesQuery);
+const useMappingMock = vi.mocked(useConciliationMappingQuery);
+const usePreviewMock = vi.mocked(useConciliationPreviewQuery);
 const useSelectionMock = vi.mocked(useConciliationSelectionQuery);
+const useSaveMappingMock = vi.mocked(useSaveConciliationMapping);
 const useSaveMock = vi.mocked(useSaveConciliationSelection);
 
 const EXECUTION = {
@@ -87,6 +99,8 @@ describe("ConciliationWorkspace", () => {
     useExecutionMock.mockReturnValue({ data: EXECUTION, isPending: false } as never);
     useProcessMock.mockReturnValue({ data: PROCESS, isPending: false } as never);
     useFilesMock.mockReturnValue({ data: FILES, isPending: false } as never);
+    useMappingMock.mockReturnValue({ data: null, isPending: false } as never);
+    usePreviewMock.mockReturnValue({ data: { columns: ["Factura", "Importe"] } } as never);
     useSelectionMock.mockImplementation(() => ({
       data: selection,
       isPending: false,
@@ -98,6 +112,10 @@ describe("ConciliationWorkspace", () => {
       isSuccess: false,
       mutateAsync,
     } as never));
+    useSaveMappingMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn(),
+    } as never);
   });
 
   it("renderiza el workspace correcto y recupera A/B persistidos", async () => {

@@ -1,10 +1,14 @@
 import type { ProcessRead } from "@/features/processes/types";
-import type { ConciliationFileSelection } from "@/features/conciliations/types";
+import type {
+  ConciliationFileSelection,
+  ConciliationMappingCreate,
+} from "@/features/conciliations/types";
 import {
   parseConciliationFile,
   parseConciliationFileList,
   parseConciliationFilePreview,
   parseConciliationFileSelection,
+  parseConciliationMapping,
   parseExecutionList,
   parseExecutionRead,
   parseProcessList,
@@ -70,6 +74,10 @@ const ERROR_PAYLOADS = {
     code: "CONCILIATION_SELECTION_NOT_FOUND",
     message: "Todavía no hay archivos A/B seleccionados.",
   },
+  conciliationMappingNotFound: {
+    code: "CONCILIATION_MAPPING_NOT_FOUND",
+    message: "Todav\u00eda no hay un mapping de conciliaci\u00f3n guardado.",
+  },
   invalidConciliationFile: {
     code: "INVALID_CONCILIATION_FILE",
     message: "El archivo no es compatible con Conciliación Excel.",
@@ -77,6 +85,10 @@ const ERROR_PAYLOADS = {
   invalidConciliationSelection: {
     code: "INVALID_CONCILIATION_SELECTION",
     message: "La selección de archivos A/B no es válida.",
+  },
+  invalidConciliationMapping: {
+    code: "INVALID_CONCILIATION_MAPPING",
+    message: "La configuraci\u00f3n de conciliaci\u00f3n no es v\u00e1lida.",
   },
   invalidConciliationPreview: {
     code: "INVALID_CONCILIATION_PREVIEW",
@@ -1234,6 +1246,76 @@ export async function handleSaveConciliationSelectionRequest(
   return savedSelection
     ? jsonResponse(savedSelection)
     : errorResponse(ERROR_PAYLOADS.internal, 500);
+}
+
+function parseMappingRequestBody(
+  value: unknown,
+): ConciliationMappingCreate | undefined {
+  if (
+    typeof value !== "object" || value === null || Array.isArray(value) ||
+    Object.keys(value).some((key) => ![
+      "archivo_a_id", "archivo_b_id", "columna_clave_archivo_a",
+      "columna_clave_archivo_b", "columna_importe_archivo_a",
+      "columna_importe_archivo_b", "tolerancia_importe", "detectar_duplicados",
+    ].includes(key))
+  ) return undefined;
+
+  const mapping = value as Record<string, unknown>;
+  const columns = [mapping.columna_clave_archivo_a, mapping.columna_clave_archivo_b, mapping.columna_importe_archivo_a, mapping.columna_importe_archivo_b];
+  if (
+    !parseConciliationFileSelection({ archivo_a_id: mapping.archivo_a_id, archivo_b_id: mapping.archivo_b_id }) ||
+    !columns.every((column) => typeof column === "string" && column.trim().length > 0) ||
+    typeof mapping.tolerancia_importe !== "number" || !Number.isFinite(mapping.tolerancia_importe) ||
+    typeof mapping.detectar_duplicados !== "boolean"
+  ) return undefined;
+
+  return mapping as ConciliationMappingCreate;
+}
+
+export async function handleGetConciliationMappingRequest(
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+  const contextResult = await validateConciliationExecution(executionId, sessionResult.value, dependencies);
+  if (!contextResult.ok) return contextResult.response;
+  const result = await callBackend(
+    `/conciliaciones/${executionId}/mapping`, sessionResult.value, dependencies,
+    { headers: { Accept: "application/json" }, method: "GET" },
+    { 404: ERROR_PAYLOADS.conciliationMappingNotFound },
+  );
+  if (!result.ok) return result.response;
+  const mapping = parseConciliationMapping(result.value);
+  return mapping ? jsonResponse(mapping) : errorResponse(ERROR_PAYLOADS.internal, 500);
+}
+
+export async function handleSaveConciliationMappingRequest(
+  request: Request,
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  if (!isSameOriginRequest(request)) return errorResponse(ERROR_PAYLOADS.invalidOrigin, 403);
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+  let body: unknown;
+  try { body = await request.json(); } catch { return errorResponse(ERROR_PAYLOADS.invalidRequest, 400); }
+  const mapping = parseMappingRequestBody(body);
+  if (!mapping) return errorResponse(ERROR_PAYLOADS.invalidConciliationMapping, 422);
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+  const contextResult = await validateConciliationExecution(executionId, sessionResult.value, dependencies);
+  if (!contextResult.ok) return contextResult.response;
+  const result = await callBackend(
+    `/conciliaciones/${executionId}/mapping`, sessionResult.value, dependencies,
+    { body: JSON.stringify(mapping), headers: { Accept: "application/json", "Content-Type": "application/json" }, method: "POST" },
+    { 400: ERROR_PAYLOADS.invalidConciliationMapping },
+  );
+  if (!result.ok) return result.response;
+  const savedMapping = parseConciliationMapping(result.value);
+  return savedMapping ? jsonResponse(savedMapping) : errorResponse(ERROR_PAYLOADS.internal, 500);
 }
 
 export async function handleGetConciliationPreviewRequest(

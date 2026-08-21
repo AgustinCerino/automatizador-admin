@@ -2,6 +2,8 @@ import type {
   ConciliationFile,
   ConciliationFilePreview,
   ConciliationFileSelection,
+  ConciliationMapping,
+  ConciliationMappingCreate,
 } from "@/features/conciliations/types";
 import { apiFetch } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
@@ -11,6 +13,37 @@ function assertIdentifier(value: number, label: string): void {
   if (!isPositiveInteger(value)) {
     throw new TypeError(`El identificador ${label} no es válido.`);
   }
+}
+
+export async function getConciliationMapping(
+  executionId: number,
+): Promise<ConciliationMapping | null> {
+  assertIdentifier(executionId, "de la ejecuci\u00f3n");
+  try {
+    return await apiFetch(`/api/backend/conciliaciones/${executionId}/mapping`, {
+      method: "GET",
+    });
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      error.status === 404 &&
+      error.code === "CONCILIATION_MAPPING_NOT_FOUND"
+    ) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export function saveConciliationMapping(
+  executionId: number,
+  mapping: ConciliationMappingCreate,
+): Promise<ConciliationMapping> {
+  assertIdentifier(executionId, "de la ejecuci\u00f3n");
+  return apiFetch(`/api/backend/conciliaciones/${executionId}/mapping`, {
+    body: mapping,
+    method: "POST",
+  });
 }
 
 export function listConciliationFiles(

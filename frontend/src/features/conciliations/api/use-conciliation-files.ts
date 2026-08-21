@@ -5,11 +5,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getConciliationFilePreview,
   getConciliationFileSelection,
+  getConciliationMapping,
   listConciliationFiles,
   saveConciliationFileSelection,
+  saveConciliationMapping,
   uploadConciliationFile,
 } from "@/features/conciliations/api/conciliation-files-api";
-import type { ConciliationFileSelection } from "@/features/conciliations/types";
+import type { ConciliationFileSelection, ConciliationMappingCreate } from "@/features/conciliations/types";
 import {
   useRedirectOnSessionExpired,
   useSessionExpiredHandler,
@@ -54,6 +56,31 @@ export function useSaveConciliationSelection(executionId: number) {
         queryKeys.conciliations.selection(executionId),
         selection,
       );
+    },
+  });
+}
+
+export function useConciliationMappingQuery(executionId: number) {
+  const query = useQuery({
+    enabled: isPositiveInteger(executionId),
+    queryFn: () => getConciliationMapping(executionId),
+    queryKey: queryKeys.conciliations.mapping(executionId),
+    retry: shouldRetryQuery,
+    staleTime: 15_000,
+  });
+  useRedirectOnSessionExpired(query.error);
+  return query;
+}
+
+export function useSaveConciliationMapping(executionId: number) {
+  const queryClient = useQueryClient();
+  const handleSessionExpired = useSessionExpiredHandler();
+  return useMutation({
+    mutationFn: (mapping: ConciliationMappingCreate) =>
+      saveConciliationMapping(executionId, mapping),
+    onError: handleSessionExpired,
+    onSuccess: (mapping) => {
+      queryClient.setQueryData(queryKeys.conciliations.mapping(executionId), mapping);
     },
   });
 }

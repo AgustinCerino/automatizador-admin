@@ -63,6 +63,7 @@ No expandir el esquema por defecto. Si una tarea requiere modelos, tablas o rela
 | Tarea 34 — Hardening UX y cierre end-to-end de Transformación Excel | Completado | Validación integral del flujo frontend, hardening de estados, errores, accesibilidad, recuperación y regresiones desde carga hasta descarga. El flujo operativo principal frontend de Transformación Excel queda cerrado. |
 | Tarea 35A — Selección persistente de archivos de Conciliación Excel | Completado | Contrato backend persistente y multi-tenant para seleccionar y recuperar Archivo A/B antes del mapping; dependencia técnica de la Tarea 35 frontend. |
 | Tarea 35 — Workspace base y gestión de archivos de Conciliación Excel | Completado | Workspace frontend con navegación por tipo de proceso, carga y listado de archivos compatibles, selección explícita y persistente de Archivo A/B, recuperación tras recarga y previews independientes mediante el BFF. |
+| Tarea 36 — Configuración y persistencia del mapping de Conciliación Excel | Completado | Configuración frontend del mapping de conciliación basada en los archivos A/B persistidos, con guardado, recuperación, dirty state y manejo de cambios de archivos. |
 
 ### Frontend posterior a Tarea 22
 
