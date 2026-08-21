@@ -30,15 +30,15 @@ export default function HomePage() {
             const Icon = item.icon;
 
             return (
-              <Card className="h-full" key={item.href}>
+              <Card className="h-full ring-primary/30" key={item.href}>
                 <CardHeader>
                   <div
                     aria-hidden="true"
-                    className="mb-3 flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary"
+                    className="mb-3 flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground"
                   >
                     <Icon className="size-5" />
                   </div>
-                  <h2 className="text-base font-semibold text-card-foreground">
+                  <h2 className="text-base font-semibold text-primary">
                     {item.label}
                   </h2>
                 </CardHeader>
@@ -47,8 +47,8 @@ export default function HomePage() {
                     {item.description}
                   </p>
                 </CardContent>
-                <CardFooter className="justify-end bg-muted/30">
-                  <Button asChild variant="outline">
+                <CardFooter className="justify-end">
+                  <Button asChild>
                     <Link href={item.href}>
                       Ver {item.label.toLowerCase()}
                       <ArrowRight aria-hidden="true" data-icon="inline-end" />

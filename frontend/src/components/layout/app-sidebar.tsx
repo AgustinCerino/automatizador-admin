@@ -25,14 +25,14 @@ export function AppBrand({ className, onNavigate }: AppBrandProps) {
       href="/"
       onClick={onNavigate}
     >
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand-accent text-brand-accent-foreground">
         <Workflow aria-hidden="true" className="size-5" />
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-sm font-semibold text-sidebar-foreground">
+        <span className="block truncate text-sm font-semibold text-sidebar-primary">
           Automatizador
         </span>
-        <span className="block truncate text-xs text-muted-foreground">
+        <span className="block truncate text-xs text-brand-accent">
           Administración
         </span>
       </span>
@@ -44,8 +44,8 @@ export function AppSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-0 hidden h-svh flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex">
-      <div className="flex h-16 shrink-0 items-center border-b border-sidebar-border px-5">
+    <aside className="sticky top-0 hidden h-svh flex-col border-r border-sidebar-primary/30 bg-sidebar text-sidebar-foreground lg:flex">
+      <div className="flex h-16 shrink-0 items-center border-b border-sidebar-primary/30 px-5">
         <AppBrand className="w-full" />
       </div>
 
@@ -62,12 +62,20 @@ export function AppSidebar() {
                   className={cn(
                     "flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sidebar-ring",
                     isActive
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+                      ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                      : "text-sidebar-foreground/75 hover:bg-sidebar-primary/10 hover:text-sidebar-primary",
                   )}
                   href={item.href}
                 >
-                  <Icon aria-hidden="true" className="size-4.5 shrink-0" />
+                  <Icon
+                    aria-hidden="true"
+                    className={cn(
+                      "size-4.5 shrink-0",
+                      isActive
+                        ? "text-sidebar-primary-foreground"
+                        : "text-sidebar-primary",
+                    )}
+                  />
                   <span>{item.label}</span>
                 </Link>
               </li>

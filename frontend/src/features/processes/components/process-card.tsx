@@ -27,7 +27,9 @@ export function ProcessCard({ process }: ProcessCardProps) {
           <Badge variant="secondary">{process.tipo}</Badge>
           <StatusBadge status={process.estado} />
         </div>
-        <CardTitle className="mt-2 text-lg">{process.nombre}</CardTitle>
+        <CardTitle className="mt-2 text-lg text-primary">
+          {process.nombre}
+        </CardTitle>
         {process.descripcion ? (
           <CardDescription className="line-clamp-3 leading-6">
             {process.descripcion}

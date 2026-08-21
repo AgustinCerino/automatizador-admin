@@ -51,7 +51,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           </span>
           <div>
             <p className="font-semibold leading-tight">Automatizador</p>
-            <p className="text-sm text-muted-foreground">Administrativo</p>
+            <p className="text-sm text-brand-accent">Administrativo</p>
           </div>
         </div>
 

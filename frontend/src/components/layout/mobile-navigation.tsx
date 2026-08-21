@@ -54,7 +54,10 @@ export function MobileNavigation() {
           <Menu aria-hidden="true" />
         </Button>
       </SheetTrigger>
-      <SheetContent className="w-72 gap-0 p-0" side="left">
+      <SheetContent
+        className="w-72 gap-0 bg-sidebar p-0 text-sidebar-foreground"
+        side="left"
+      >
         <SheetHeader className="sr-only">
           <SheetTitle>Navegación</SheetTitle>
           <SheetDescription>
@@ -62,7 +65,7 @@ export function MobileNavigation() {
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex h-16 shrink-0 items-center border-b px-5 pr-12">
+        <div className="flex h-16 shrink-0 items-center border-b border-sidebar-primary/30 px-5 pr-12">
           <AppBrand className="w-full" onNavigate={() => setOpen(false)} />
         </div>
         <nav aria-label="Navegación móvil" className="px-3 py-5">
@@ -78,13 +81,21 @@ export function MobileNavigation() {
                     className={cn(
                       "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                       isActive
-                        ? "bg-accent text-accent-foreground"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                        : "text-sidebar-foreground/75 hover:bg-sidebar-primary/10 hover:text-sidebar-primary",
                     )}
                     href={item.href}
                     onClick={() => setOpen(false)}
                   >
-                    <Icon aria-hidden="true" className="size-5 shrink-0" />
+                    <Icon
+                      aria-hidden="true"
+                      className={cn(
+                        "size-5 shrink-0",
+                        isActive
+                          ? "text-sidebar-primary-foreground"
+                          : "text-sidebar-primary",
+                      )}
+                    />
                     <span>{item.label}</span>
                   </Link>
                 </li>
