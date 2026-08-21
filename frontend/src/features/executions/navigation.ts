@@ -8,7 +8,9 @@ export function getExecutionHref(
     throw new TypeError("El identificador de la ejecución no es válido.");
   }
 
-  return processType === "TRANSFORMACION_EXCEL"
-    ? `/transformaciones/${executionId}`
-    : undefined;
+  const routes: Readonly<Record<string, string>> = {
+    CONCILIACION_EXCEL: `/conciliaciones/${executionId}`,
+    TRANSFORMACION_EXCEL: `/transformaciones/${executionId}`,
+  };
+  return routes[processType];
 }

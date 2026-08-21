@@ -37,12 +37,26 @@ describe("ExecutionsTable", () => {
     ).toHaveAttribute("href", "/transformaciones/31");
   });
 
-  it("no dirige otros tipos a la vista de transformación", () => {
+  it("abre Conciliación Excel en su workspace específico", () => {
     render(
       <ExecutionsTable
         emptyAction={<button>Nueva ejecución</button>}
         executions={[EXECUTION]}
         processType="CONCILIACION_EXCEL"
+      />,
+    );
+
+    expect(
+      screen.getByRole("link", { name: "Abrir ejecución 31" }),
+    ).toHaveAttribute("href", "/conciliaciones/31");
+  });
+
+  it("mantiene sin vista los tipos desconocidos", () => {
+    render(
+      <ExecutionsTable
+        emptyAction={<button>Nueva ejecución</button>}
+        executions={[EXECUTION]}
+        processType="TIPO_DESCONOCIDO"
       />,
     );
 

@@ -1,6 +1,11 @@
 import type { ExecutionRead } from "@/features/executions/types";
 import type { ProcessRead } from "@/features/processes/types";
 import type {
+  ConciliationFile,
+  ConciliationFilePreview,
+  ConciliationFileSelection,
+} from "@/features/conciliations/types";
+import type {
   TransformationSourceFile,
   TransformationSourceStructure,
 } from "@/features/transformations/types";
@@ -143,6 +148,59 @@ export function parseTransformationSourceFileList(
   if (!Array.isArray(value)) return undefined;
   const files = value.map(parseTransformationSourceFile);
   return files.every((file) => file !== undefined) ? files : undefined;
+}
+
+export function parseConciliationFile(
+  value: unknown,
+): ConciliationFile | undefined {
+  return parseTransformationSourceFile(value);
+}
+
+export function parseConciliationFileList(
+  value: unknown,
+): ConciliationFile[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const files = value.map(parseConciliationFile);
+  return files.every((file) => file !== undefined) ? files : undefined;
+}
+
+export function parseConciliationFileSelection(
+  value: unknown,
+): ConciliationFileSelection | undefined {
+  if (
+    !isRecord(value) ||
+    !isPositiveInteger(value.archivo_a_id) ||
+    !isPositiveInteger(value.archivo_b_id) ||
+    value.archivo_a_id === value.archivo_b_id
+  ) {
+    return undefined;
+  }
+
+  return {
+    archivo_a_id: value.archivo_a_id,
+    archivo_b_id: value.archivo_b_id,
+  };
+}
+
+export function parseConciliationFilePreview(
+  value: unknown,
+): ConciliationFilePreview | undefined {
+  if (
+    !isRecord(value) ||
+    !isPositiveInteger(value.archivo_id) ||
+    typeof value.nombre_original !== "string" ||
+    !isNullableString(value.extension) ||
+    !Array.isArray(value.columns) ||
+    !value.columns.every((column) => typeof column === "string") ||
+    !Array.isArray(value.rows) ||
+    !value.rows.every(isRecord) ||
+    !isPositiveInteger(value.preview_limit) ||
+    !isNonNegativeInteger(value.total_rows)
+  ) {
+    return undefined;
+  }
+
+  return value as ConciliationFilePreview;
 }
 
 const DETECTED_TYPES = new Set([

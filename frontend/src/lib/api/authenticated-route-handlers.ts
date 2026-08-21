@@ -1,5 +1,10 @@
 import type { ProcessRead } from "@/features/processes/types";
+import type { ConciliationFileSelection } from "@/features/conciliations/types";
 import {
+  parseConciliationFile,
+  parseConciliationFileList,
+  parseConciliationFilePreview,
+  parseConciliationFileSelection,
   parseExecutionList,
   parseExecutionRead,
   parseProcessList,
@@ -56,6 +61,26 @@ const ERROR_PAYLOADS = {
   incompatibleTransformation: {
     code: "INCOMPATIBLE_TRANSFORMATION",
     message: "Esta ejecución no corresponde a una transformación Excel.",
+  },
+  incompatibleConciliation: {
+    code: "INCOMPATIBLE_CONCILIATION",
+    message: "Esta ejecución no corresponde a una conciliación Excel.",
+  },
+  conciliationSelectionNotFound: {
+    code: "CONCILIATION_SELECTION_NOT_FOUND",
+    message: "Todavía no hay archivos A/B seleccionados.",
+  },
+  invalidConciliationFile: {
+    code: "INVALID_CONCILIATION_FILE",
+    message: "El archivo no es compatible con Conciliación Excel.",
+  },
+  invalidConciliationSelection: {
+    code: "INVALID_CONCILIATION_SELECTION",
+    message: "La selección de archivos A/B no es válida.",
+  },
+  invalidConciliationPreview: {
+    code: "INVALID_CONCILIATION_PREVIEW",
+    message: "No se pudo previsualizar el archivo seleccionado.",
   },
   sessionRequired: {
     code: "UNAUTHENTICATED",
@@ -944,4 +969,306 @@ export async function handleInspectTransformationSourceFileRequest(
   }
 
   return jsonResponse(structure);
+}
+
+const CONCILIATION_INPUT_FILE_TYPE = "ENTRADA_CONCILIACION";
+const CONCILIATION_FILE_EXTENSIONS = new Set([".csv", ".xls", ".xlsx"]);
+
+async function validateConciliationExecution(
+  executionId: number,
+  session: AuthenticatedSession,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<HandlerResult<unknown>> {
+  const executionResult = await callBackend(
+    `/ejecuciones/${executionId}`,
+    session,
+    dependencies,
+    { headers: { Accept: "application/json" }, method: "GET" },
+  );
+  if (!executionResult.ok) return executionResult;
+
+  const execution = parseExecutionRead(executionResult.value);
+  if (!execution) {
+    return {
+      ok: false,
+      response: errorResponse(ERROR_PAYLOADS.internal, 500),
+    };
+  }
+
+  const processResult = await getOwnedProcess(
+    execution.proceso_id,
+    session,
+    dependencies,
+  );
+  if (!processResult.ok) return processResult;
+  if (processResult.value.tipo !== "CONCILIACION_EXCEL") {
+    return {
+      ok: false,
+      response: errorResponse(ERROR_PAYLOADS.incompatibleConciliation, 400),
+    };
+  }
+
+  return { ok: true, value: execution };
+}
+
+function isSupportedConciliationFile(
+  file: ReturnType<typeof parseConciliationFile>,
+): file is NonNullable<ReturnType<typeof parseConciliationFile>> {
+  return (
+    file !== undefined &&
+    file.extension !== null &&
+    CONCILIATION_FILE_EXTENSIONS.has(file.extension.toLowerCase())
+  );
+}
+
+async function getConciliationFiles(
+  executionId: number,
+  session: AuthenticatedSession,
+  dependencies: AuthenticatedRouteDependencies,
+) {
+  const contextResult = await validateConciliationExecution(
+    executionId,
+    session,
+    dependencies,
+  );
+  if (!contextResult.ok) return contextResult;
+
+  const filesResult = await callBackend(
+    `/archivos/ejecucion/${executionId}`,
+    session,
+    dependencies,
+    { headers: { Accept: "application/json" }, method: "GET" },
+  );
+  if (!filesResult.ok) return filesResult;
+
+  const files = parseConciliationFileList(filesResult.value);
+  if (!files || files.some((file) => file.ejecucion_id !== executionId)) {
+    return {
+      ok: false as const,
+      response: errorResponse(ERROR_PAYLOADS.internal, 500),
+    };
+  }
+
+  return {
+    ok: true as const,
+    value: files.filter(isSupportedConciliationFile),
+  };
+}
+
+export async function handleListConciliationFilesRequest(
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+
+  const filesResult = await getConciliationFiles(
+    executionId,
+    sessionResult.value,
+    dependencies,
+  );
+  return filesResult.ok ? jsonResponse(filesResult.value) : filesResult.response;
+}
+
+export async function handleUploadConciliationFileRequest(
+  request: Request,
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  if (!isSameOriginRequest(request)) {
+    return errorResponse(ERROR_PAYLOADS.invalidOrigin, 403);
+  }
+
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+
+  let incomingFormData: FormData;
+  try {
+    incomingFormData = await request.formData();
+  } catch {
+    return errorResponse(ERROR_PAYLOADS.invalidRequest, 400);
+  }
+
+  const file = parseSingleUploadFile(incomingFormData);
+  const extension = file ? getFileExtension(file.name) : undefined;
+  if (!file || !extension || !CONCILIATION_FILE_EXTENSIONS.has(extension)) {
+    return errorResponse(ERROR_PAYLOADS.invalidConciliationFile, 422);
+  }
+
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+
+  const contextResult = await validateConciliationExecution(
+    executionId,
+    sessionResult.value,
+    dependencies,
+  );
+  if (!contextResult.ok) return contextResult.response;
+
+  const backendFormData = new FormData();
+  backendFormData.append("ejecucion_id", String(executionId));
+  backendFormData.append("tipo_archivo", CONCILIATION_INPUT_FILE_TYPE);
+  backendFormData.append("file", file, file.name);
+
+  const uploadResult = await callBackend(
+    "/archivos/upload",
+    sessionResult.value,
+    dependencies,
+    { body: backendFormData, headers: { Accept: "application/json" }, method: "POST" },
+    {
+      400: ERROR_PAYLOADS.invalidConciliationFile,
+      413: ERROR_PAYLOADS.sourceFileTooLarge,
+    },
+  );
+  if (!uploadResult.ok) return uploadResult.response;
+
+  const uploadedFile = parseConciliationFile(uploadResult.value);
+  if (
+    !isSupportedConciliationFile(uploadedFile) ||
+    uploadedFile.ejecucion_id !== executionId
+  ) {
+    return errorResponse(ERROR_PAYLOADS.internal, 500);
+  }
+
+  return jsonResponse(uploadedFile, 201);
+}
+
+export async function handleGetConciliationSelectionRequest(
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+
+  const contextResult = await validateConciliationExecution(
+    executionId,
+    sessionResult.value,
+    dependencies,
+  );
+  if (!contextResult.ok) return contextResult.response;
+
+  const selectionResult = await callBackend(
+    `/conciliaciones/${executionId}/archivos`,
+    sessionResult.value,
+    dependencies,
+    { headers: { Accept: "application/json" }, method: "GET" },
+    { 404: ERROR_PAYLOADS.conciliationSelectionNotFound },
+  );
+  if (!selectionResult.ok) return selectionResult.response;
+
+  const selection = parseConciliationFileSelection(selectionResult.value);
+  return selection
+    ? jsonResponse(selection)
+    : errorResponse(ERROR_PAYLOADS.internal, 500);
+}
+
+function parseSelectionRequestBody(
+  value: unknown,
+): ConciliationFileSelection | undefined {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    Object.keys(value).some(
+      (key) => key !== "archivo_a_id" && key !== "archivo_b_id",
+    )
+  ) {
+    return undefined;
+  }
+  return parseConciliationFileSelection(value);
+}
+
+export async function handleSaveConciliationSelectionRequest(
+  request: Request,
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  if (!isSameOriginRequest(request)) {
+    return errorResponse(ERROR_PAYLOADS.invalidOrigin, 403);
+  }
+
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse(ERROR_PAYLOADS.invalidRequest, 400);
+  }
+  const selection = parseSelectionRequestBody(body);
+  if (!selection) {
+    return errorResponse(ERROR_PAYLOADS.invalidConciliationSelection, 422);
+  }
+
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+
+  const contextResult = await validateConciliationExecution(
+    executionId,
+    sessionResult.value,
+    dependencies,
+  );
+  if (!contextResult.ok) return contextResult.response;
+
+  const selectionResult = await callBackend(
+    `/conciliaciones/${executionId}/archivos`,
+    sessionResult.value,
+    dependencies,
+    {
+      body: JSON.stringify(selection),
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      method: "PUT",
+    },
+    { 400: ERROR_PAYLOADS.invalidConciliationSelection },
+  );
+  if (!selectionResult.ok) return selectionResult.response;
+
+  const savedSelection = parseConciliationFileSelection(selectionResult.value);
+  return savedSelection
+    ? jsonResponse(savedSelection)
+    : errorResponse(ERROR_PAYLOADS.internal, 500);
+}
+
+export async function handleGetConciliationPreviewRequest(
+  rawExecutionId: string,
+  rawFileId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  const executionId = parsePositiveInteger(rawExecutionId);
+  const fileId = parsePositiveInteger(rawFileId);
+  if (!executionId || !fileId) return invalidIdentifierResponse();
+
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+
+  const filesResult = await getConciliationFiles(
+    executionId,
+    sessionResult.value,
+    dependencies,
+  );
+  if (!filesResult.ok) return filesResult.response;
+  if (!filesResult.value.some((file) => file.id === fileId)) {
+    return errorResponse(ERROR_PAYLOADS.notFound, 404);
+  }
+
+  const previewResult = await callBackend(
+    `/archivos/${fileId}/preview?limit=20`,
+    sessionResult.value,
+    dependencies,
+    { headers: { Accept: "application/json" }, method: "GET" },
+    { 400: ERROR_PAYLOADS.invalidConciliationPreview },
+  );
+  if (!previewResult.ok) return previewResult.response;
+
+  const preview = parseConciliationFilePreview(previewResult.value);
+  return preview && preview.archivo_id === fileId
+    ? jsonResponse(preview)
+    : errorResponse(ERROR_PAYLOADS.internal, 500);
 }

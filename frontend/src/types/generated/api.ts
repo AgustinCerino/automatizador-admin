@@ -177,6 +177,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/conciliaciones/{ejecucion_id}/archivos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Selected Files */
+        get: operations["read_selected_files_conciliaciones__ejecucion_id__archivos_get"];
+        /** Replace Selected Files */
+        put: operations["replace_selected_files_conciliaciones__ejecucion_id__archivos_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/conciliaciones/{ejecucion_id}/ejecutar": {
         parameters: {
             query?: never;
@@ -780,6 +798,13 @@ export interface components {
             type: "SOURCE";
             /** Value */
             value: string;
+        };
+        /** ConciliacionArchivosSelection */
+        ConciliacionArchivosSelection: {
+            /** Archivo A Id */
+            archivo_a_id: number;
+            /** Archivo B Id */
+            archivo_b_id: number;
         };
         /** ConciliacionMappingCreate */
         ConciliacionMappingCreate: {
@@ -2086,6 +2111,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RevisionResumenRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_selected_files_conciliaciones__ejecucion_id__archivos_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ejecucion_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConciliacionArchivosSelection"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_selected_files_conciliaciones__ejecucion_id__archivos_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ejecucion_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConciliacionArchivosSelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConciliacionArchivosSelection"];
                 };
             };
             /** @description Validation Error */

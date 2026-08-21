@@ -47,7 +47,7 @@ El frontend verificado está en `frontend/` y usa:
 
 La estructura principal separa rutas (`src/app`), funcionalidades por dominio (`src/features`), componentes reutilizables (`src/components`) y acceso server-side a API/autenticación (`src/lib/api`, `src/lib/auth`). El layout protegido provee navegación lateral, cabecera y componentes de estado; el sistema visual está orientado a herramientas administrativas.
 
-Rutas de interfaz implementadas: login, inicio protegido, procesos, ejecuciones, ejecuciones por proceso, plantillas y espacio operativo de transformaciones. Se encuentran implementadas Route Handlers para login, logout y sesión; health; procesos; ejecuciones; y operaciones de archivos, estructura y resumen de transformaciones. Las rutas dinámicas de backend delegan en manejadores compartidos de `src/lib/api`.
+Rutas de interfaz implementadas: login, inicio protegido, procesos, ejecuciones, ejecuciones por proceso, plantillas, espacio operativo de transformaciones y workspace de Conciliación Excel en `/conciliaciones/[ejecucionId]`. Se encuentran implementadas Route Handlers para login, logout y sesión; health; procesos; ejecuciones; operaciones de archivos, estructura y resumen de transformaciones; y listado, carga, selección persistente y preview de archivos de conciliación. Las rutas dinámicas de backend delegan en manejadores compartidos de `src/lib/api`.
 
 El navegador no accede a FastAPI directamente en estos flujos. El login llama `POST /api/auth/login`; el Route Handler solicita `/auth/login` y `/auth/me` a FastAPI, valida la respuesta y guarda el JWT en una cookie `HttpOnly`. Los Route Handlers autenticados leen esa cookie y agregan el Bearer token al request server-side. La sesión puede consultarse en `GET /api/auth/session` y cerrarse en `POST /api/auth/logout`.
 
@@ -59,7 +59,7 @@ BACKEND_URL=http://127.0.0.1:8000
 
 No debe exponerse como `NEXT_PUBLIC_BACKEND_URL` sin una decisión arquitectónica explícita. Los scripts disponibles son `npm run dev`, `build`, `start`, `lint`, `typecheck`, `test`, `test:run`, `api:schema`, `api:generate` y `api:types`.
 
-Limitación verificable: el frontend actual cubre el shell, autenticación, consulta/creación de procesos y ejecuciones, y el flujo de carga/inspección de fuente y resumen de Transformación Excel. No se infieren de este snapshot funcionalidades frontend adicionales ni tareas futuras autorizadas.
+Limitación verificable: el frontend actual cubre el shell, autenticación, consulta/creación de procesos y ejecuciones, el flujo operativo principal de Transformación Excel y la preparación de archivos de Conciliación Excel hasta la selección persistente de Archivo A/B. El mapping, la ejecución y los resultados de conciliación no forman parte del workspace implementado en la Tarea 35. No se infieren de este snapshot funcionalidades frontend adicionales ni tareas futuras autorizadas.
 
 ## Configuración local
 

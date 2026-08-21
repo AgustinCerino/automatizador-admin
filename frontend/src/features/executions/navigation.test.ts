@@ -15,8 +15,13 @@ describe("getExecutionHref", () => {
     );
   });
 
+  it("dirige CONCILIACION_EXCEL a su workspace específico", () => {
+    expect(getExecutionHref("CONCILIACION_EXCEL", 27)).toBe(
+      "/conciliaciones/27",
+    );
+  });
+
   it("permanece en el historial para tipos sin una vista implementada", () => {
-    expect(getExecutionHref("CONCILIACION_EXCEL", 27)).toBeUndefined();
     expect(getExecutionHref("TIPO_DESCONOCIDO", 27)).toBeUndefined();
   });
 });

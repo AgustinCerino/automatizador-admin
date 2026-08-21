@@ -1,4 +1,15 @@
 export const queryKeys = {
+  conciliations: {
+    all: ["conciliations"] as const,
+    detail: (executionId: number) =>
+      ["conciliations", "detail", executionId] as const,
+    files: (executionId: number) =>
+      ["conciliations", "detail", executionId, "files"] as const,
+    preview: (executionId: number, fileId: number) =>
+      ["conciliations", "detail", executionId, "files", fileId, "preview"] as const,
+    selection: (executionId: number) =>
+      ["conciliations", "detail", executionId, "selection"] as const,
+  },
   executions: {
     all: ["executions"] as const,
     byProcess: (processId: number) =>

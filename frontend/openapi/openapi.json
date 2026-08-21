@@ -545,6 +545,26 @@
         "title": "ConcatSourcePart",
         "type": "object"
       },
+      "ConciliacionArchivosSelection": {
+        "properties": {
+          "archivo_a_id": {
+            "exclusiveMinimum": 0,
+            "title": "Archivo A Id",
+            "type": "integer"
+          },
+          "archivo_b_id": {
+            "exclusiveMinimum": 0,
+            "title": "Archivo B Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "archivo_a_id",
+          "archivo_b_id"
+        ],
+        "title": "ConciliacionArchivosSelection",
+        "type": "object"
+      },
       "ConciliacionMappingCreate": {
         "properties": {
           "archivo_a_id": {
@@ -3884,6 +3904,108 @@
           }
         ],
         "summary": "Approve Reconciliation",
+        "tags": [
+          "Conciliaciones"
+        ]
+      }
+    },
+    "/conciliaciones/{ejecucion_id}/archivos": {
+      "get": {
+        "operationId": "read_selected_files_conciliaciones__ejecucion_id__archivos_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ejecucion_id",
+            "required": true,
+            "schema": {
+              "title": "Ejecucion Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConciliacionArchivosSelection"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Selected Files",
+        "tags": [
+          "Conciliaciones"
+        ]
+      },
+      "put": {
+        "operationId": "replace_selected_files_conciliaciones__ejecucion_id__archivos_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ejecucion_id",
+            "required": true,
+            "schema": {
+              "title": "Ejecucion Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConciliacionArchivosSelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConciliacionArchivosSelection"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Replace Selected Files",
         "tags": [
           "Conciliaciones"
         ]
