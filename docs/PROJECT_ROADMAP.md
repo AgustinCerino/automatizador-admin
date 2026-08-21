@@ -60,6 +60,7 @@ No expandir el esquema por defecto. Si una tarea requiere modelos, tablas o rela
 | Tarea 31 — Reglas de filas de Transformación Excel | Completado | Constructor integrado para filtros, deduplicación y ordenamiento con persistencia en la configuración de transformación. |
 | Tarea 32 — Dry-run y validación frontend | Completado | Validación explícita sobre la configuración persistida, con preview dinámico, métricas, warnings, errores y estado stale al editar. |
 | Tarea 33 — Generación y descarga frontend | Completado | Generación explícita, recuperación del resultado persistido y descarga XLSX mediante el BFF con precondiciones de validación vigente. |
+| Tarea 34 — Hardening UX y cierre end-to-end de Transformación Excel | Completado | Validación integral del flujo frontend, hardening de estados, errores, accesibilidad, recuperación y regresiones desde carga hasta descarga. El flujo operativo principal frontend de Transformación Excel queda cerrado. |
 
 ### Frontend posterior a Tarea 22
 

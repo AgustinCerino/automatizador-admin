@@ -127,7 +127,7 @@ export function TransformationConfigurationBuilder({ summary }: { summary: Trans
   const [columns, setColumns] = useState<DraftColumn[]>(() => [emptyColumn(1)]);
   const [rows, setRows] = useState<DraftRows>(EMPTY_ROWS);
   const [nextId, setNextId] = useState(2);
-  const initializedConfiguration = useRef<TransformationExcelConfig | null>(null);
+  const hasInitializedConfiguration = useRef(false);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [validationResult, setValidationResult] = useState<TransformationValidationRead | null>(null);
@@ -139,8 +139,8 @@ export function TransformationConfigurationBuilder({ summary }: { summary: Trans
   const isDraftDirty = isDirty || sourceSelectionChanged;
 
   useEffect(() => {
-    if (!persistedConfiguration || initializedConfiguration.current === persistedConfiguration) return;
-    initializedConfiguration.current = persistedConfiguration;
+    if (!persistedConfiguration || hasInitializedConfiguration.current) return;
+    hasInitializedConfiguration.current = true;
     const initialColumns = draftColumnsFromConfiguration(persistedConfiguration);
     queueMicrotask(() => { setColumns(initialColumns); setRows(draftRowsFromConfiguration(persistedConfiguration)); setNextId(initialColumns.length + 1); setIsDirty(false); });
   }, [persistedConfiguration]);
@@ -150,7 +150,8 @@ export function TransformationConfigurationBuilder({ summary }: { summary: Trans
     () => columns.filter(validColumn).map((column) => column.outputColumn.trim()),
     [columns],
   );
-  const canEdit = summary.can_edit_configuration && (!summary.has_configuration || configurationQuery.isSuccess);
+  const hasInspectedSource = Boolean(structureQuery.data) && !structureQuery.isError;
+  const canEdit = summary.can_edit_configuration && (!summary.has_configuration || configurationQuery.isSuccess) && hasInspectedSource;
   const markDirty = () => { setIsDirty(true); setValidationMessage(null); };
   const updateColumn = (id: number, update: Partial<DraftColumn>) => { setColumns((current) => current.map((column) => column.id === id ? { ...column, ...update } : column)); markDirty(); };
   const changeOperation = (id: number, operation: Operation) => updateColumn(id, { ...emptyColumn(id), operation, outputColumn: columns.find((column) => column.id === id)?.outputColumn ?? "" });
@@ -160,6 +161,7 @@ export function TransformationConfigurationBuilder({ summary }: { summary: Trans
 
   async function save() {
     if (!sourceDraft.sourceFileId) return setValidationMessage("Seleccion\u00e1 un archivo fuente antes de guardar.");
+    if (!hasInspectedSource) return setValidationMessage("Inspeccion\u00e1 el archivo fuente antes de guardar.");
     if (!columns.length) return setValidationMessage("Agreg\u00e1 al menos una columna de salida.");
     if (columns.some((column) => !validColumn(column)) || !validRows(rows, sourceColumns, outputColumns)) return setValidationMessage("Complet\u00e1 las columnas y reglas de filas antes de guardar.");
     const source = { archivo_id: sourceDraft.sourceFileId, header_row: sourceDraft.headerRow, sheet_name: sourceDraft.sheet };

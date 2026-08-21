@@ -10,12 +10,16 @@ import { SourceFilePanel } from "@/features/transformations/components/source-fi
 import type { TransformationSummary } from "@/features/transformations/types";
 
 const replace = vi.fn();
+const setQueryData = vi.fn();
 let query = "sourceFileId=8&sheet=Datos&headerRow=2";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/transformaciones/31",
   useRouter: () => ({ replace }),
   useSearchParams: () => new URLSearchParams(query),
+}));
+vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ setQueryData }),
 }));
 vi.mock("@/features/transformations/api/use-source-files", () => ({
   useTransformationSourceFilesQuery: vi.fn(),
@@ -61,6 +65,7 @@ describe("SourceFilePanel", () => {
   beforeEach(() => {
     query = "sourceFileId=8&sheet=Datos&headerRow=2";
     replace.mockReset();
+    setQueryData.mockReset();
     filesQueryMock.mockReturnValue({ data: [FILE], isPending: false } as never);
     structureQueryMock.mockReturnValue({
       data: {
@@ -124,5 +129,15 @@ describe("SourceFilePanel", () => {
       headerRow: 2,
       sheet: "Datos",
     });
+  });
+  it("reuses the initial inspection when setting the default sheet", () => {
+    query = "sourceFileId=8&headerRow=2";
+    render(<SourceFilePanel summary={SUMMARY} />);
+
+    expect(setQueryData).toHaveBeenCalledOnce();
+    expect(replace).toHaveBeenCalledWith(
+      "/transformaciones/31?sourceFileId=8&headerRow=2&sheet=Datos",
+      { scroll: false },
+    );
   });
 });

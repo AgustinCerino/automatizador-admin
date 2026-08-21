@@ -1,9 +1,10 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, FileSpreadsheet, Upload, TriangleAlert } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -56,6 +57,7 @@ import type {
 import { ApiError } from "@/lib/api/errors";
 import { formatDateTime } from "@/lib/format-date";
 import { formatFileSize, formatNumber } from "@/lib/format-values";
+import { queryKeys } from "@/lib/query/query-keys";
 import { cn } from "@/lib/utils";
 
 const ACCEPTED_FILE_PATTERN = /\.(csv|xls|xlsx)$/i;
@@ -218,6 +220,8 @@ export function SourceFilePanel({ summary }: { summary: TransformationSummary })
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
+  const resolvedDefaultSheetKey = useRef<string | null>(null);
   const draft = useMemo(() => readTransformationSourceDraft(searchParams), [searchParams]);
   const effective = resolveTransformationSourceDraft(summary, draft);
   const isConfigured = summary.has_configuration && summary.source !== null;
@@ -261,8 +265,22 @@ export function SourceFilePanel({ summary }: { summary: TransformationSummary })
   useEffect(() => {
     if (isConfigured || !structureQuery.data || effective.sheet !== null || selectedIsCsv) return;
     const selectedSheet = structureQuery.data.selected_sheet_name;
-    if (selectedSheet !== null) replaceDraft({ ...effective, sheet: selectedSheet });
-  }, [effective, isConfigured, replaceDraft, selectedIsCsv, structureQuery.data]);
+    if (selectedSheet === null) return;
+    const resolutionKey = `${effective.sourceFileId}:${effective.headerRow}:${selectedSheet}`;
+    if (resolvedDefaultSheetKey.current === resolutionKey) return;
+    resolvedDefaultSheetKey.current = resolutionKey;
+
+    queryClient.setQueryData(
+      queryKeys.transformations.sourceStructure(
+        summary.ejecucion_id,
+        effective.sourceFileId ?? 0,
+        selectedSheet,
+        effective.headerRow,
+      ),
+      structureQuery.data,
+    );
+    replaceDraft({ ...effective, sheet: selectedSheet });
+  }, [effective, isConfigured, queryClient, replaceDraft, selectedIsCsv, structureQuery.data, summary.ejecucion_id]);
 
   useEffect(() => {
     if (!isConfigured && selectedIsCsv && effective.sheet !== null) {

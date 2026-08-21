@@ -64,7 +64,9 @@ export function TransformationGenerationPanel({ isDirty, summary, validationIsVa
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const stale = isDirty && (Boolean(result) || summary.generation.available);
-  const canGenerate = !isDirty && (validationIsValid || summary.estado_ejecucion === "VALIDADO");
+  const canGenerate = !isDirty && summary.can_generate && (
+    validationIsValid || summary.estado_ejecucion === "VALIDADO"
+  );
 
   async function download() {
     if (!result || isDownloading) return;

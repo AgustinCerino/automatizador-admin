@@ -36,6 +36,17 @@ describe("TransformationGenerationPanel", () => {
     expect(screen.getByRole("button", { name: /generar archivo/i })).toBeEnabled();
   });
 
+  it("respects the current capability reported by the summary", () => {
+    render(
+      <TransformationGenerationPanel
+        isDirty={false}
+        summary={{ ...SUMMARY, can_generate: false }}
+        validationIsValid
+      />,
+    );
+    expect(screen.getByRole("button", { name: /generar archivo/i })).toBeDisabled();
+  });
+
   it("bloquea la generación y marca el resultado como stale ante cambios", () => {
     render(<TransformationGenerationPanel isDirty summary={{ ...SUMMARY, generation: { available: true, file_exists: true } }} validationIsValid />);
     expect(screen.getByText(/resultado desactualizado/i)).toBeInTheDocument();

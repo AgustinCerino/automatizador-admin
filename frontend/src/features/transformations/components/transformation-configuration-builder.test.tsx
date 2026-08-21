@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -128,6 +128,35 @@ describe("TransformationConfigurationBuilder", { timeout: 15_000 }, () => {
     } as never);
     rerender(<TransformationConfigurationBuilder summary={{ ...SUMMARY, has_configuration: true }} />);
     expect(screen.getByRole("button", { name: /guardar configuraci/i })).toBeInTheDocument();
+  });
+
+  it("preserves an unsaved draft when the configuration query refetches", async () => {
+    const persisted = {
+      output_columns: [{ operation: "CONSTANT", output_column: "Estado", value: "Inicial" }],
+      rows: { filters: [], remove_duplicates: { enabled: false, by_output_columns: [] }, sort_by: [] },
+      source: { archivo_id: 8, header_row: 2, sheet_name: "Datos" },
+    };
+    configurationQueryMock.mockReturnValue({
+      data: { configuracion: persisted, ejecucion_id: 31 },
+      isPending: false,
+      isSuccess: true,
+    } as never);
+    const { rerender } = render(
+      <TransformationConfigurationBuilder summary={{ ...SUMMARY, has_configuration: true }} />,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText("Nombre de salida")).toHaveValue("Estado"));
+    const user = userEvent.setup();
+    await user.clear(screen.getByLabelText("Nombre de salida"));
+    await user.type(screen.getByLabelText("Nombre de salida"), "Estado local");
+    configurationQueryMock.mockReturnValue({
+      data: { configuracion: { ...persisted }, ejecucion_id: 31 },
+      isPending: false,
+      isSuccess: true,
+    } as never);
+    rerender(<TransformationConfigurationBuilder summary={{ ...SUMMARY, has_configuration: true }} />);
+
+    expect(screen.getByLabelText("Nombre de salida")).toHaveValue("Estado local");
   });
 
   it("serializes CONCAT parts", async () => {
