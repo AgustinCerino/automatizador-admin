@@ -9,6 +9,10 @@ import {
   useSaveConciliationMapping,
   useSaveConciliationSelection,
 } from "@/features/conciliations/api/use-conciliation-files";
+import {
+  useConciliationResultsQuery,
+  useExecuteConciliation,
+} from "@/features/conciliations/api/use-conciliation-results";
 import { ConciliationWorkspace } from "@/features/conciliations/components/conciliation-workspace";
 import { useExecutionQuery } from "@/features/executions/api/use-execution-query";
 import { useProcessQuery } from "@/features/processes/api/use-process-query";
@@ -26,6 +30,10 @@ vi.mock("@/features/conciliations/api/use-conciliation-files", () => ({
   useConciliationSelectionQuery: vi.fn(),
   useSaveConciliationMapping: vi.fn(),
   useSaveConciliationSelection: vi.fn(),
+}));
+vi.mock("@/features/conciliations/api/use-conciliation-results", () => ({
+  useConciliationResultsQuery: vi.fn(),
+  useExecuteConciliation: vi.fn(),
 }));
 vi.mock("@/features/conciliations/components/conciliation-mapping-editor", () => ({
   ConciliationMappingEditor: () => <section aria-label="Mapping" />,
@@ -53,6 +61,8 @@ const usePreviewMock = vi.mocked(useConciliationPreviewQuery);
 const useSelectionMock = vi.mocked(useConciliationSelectionQuery);
 const useSaveMappingMock = vi.mocked(useSaveConciliationMapping);
 const useSaveMock = vi.mocked(useSaveConciliationSelection);
+const useResultsMock = vi.mocked(useConciliationResultsQuery);
+const useExecuteMock = vi.mocked(useExecuteConciliation);
 
 const EXECUTION = {
   created_at: "2026-08-21T12:00:00Z",
@@ -89,6 +99,7 @@ const FILES = [1, 2, 3].map((id) => ({
 describe("ConciliationWorkspace", () => {
   let selection: { archivo_a_id: number; archivo_b_id: number } | null;
   let mutateAsync: ReturnType<typeof vi.fn>;
+  let executeAsync: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     selection = { archivo_a_id: 1, archivo_b_id: 2 };
@@ -96,6 +107,19 @@ describe("ConciliationWorkspace", () => {
       selection = nextSelection;
       return nextSelection;
     });
+    executeAsync = vi.fn(async () => ({
+      conciliados: 1,
+      diferencias_importe: 0,
+      duplicados_archivo_a: 0,
+      duplicados_archivo_b: 0,
+      ejecucion_id: 31,
+      errores_formato: 0,
+      estado_ejecucion: "APROBADO",
+      requiere_revision: 0,
+      solo_archivo_a: 0,
+      solo_archivo_b: 0,
+      total_resultados: 1,
+    }));
     useExecutionMock.mockReturnValue({ data: EXECUTION, isPending: false } as never);
     useProcessMock.mockReturnValue({ data: PROCESS, isPending: false } as never);
     useFilesMock.mockReturnValue({ data: FILES, isPending: false } as never);
@@ -115,6 +139,13 @@ describe("ConciliationWorkspace", () => {
     useSaveMappingMock.mockReturnValue({
       isPending: false,
       mutateAsync: vi.fn(),
+    } as never);
+    useResultsMock.mockReturnValue({ data: undefined, isPending: false } as never);
+    useExecuteMock.mockReturnValue({
+      data: undefined,
+      error: null,
+      isPending: false,
+      mutateAsync: executeAsync,
     } as never);
   });
 
@@ -160,5 +191,83 @@ describe("ConciliationWorkspace", () => {
     render(<ConciliationWorkspace executionId={31} />);
     expect(screen.getByRole("heading", { name: "Workspace no disponible" })).toBeInTheDocument();
     expect(screen.queryByText("Archivos disponibles")).not.toBeInTheDocument();
+  });
+
+  it("bloquea la ejecución hasta que exista un mapping persistido", () => {
+    render(<ConciliationWorkspace executionId={31} />);
+    expect(screen.getByRole("button", { name: "Ejecutar conciliación" })).toBeDisabled();
+    expect(screen.getByText(/Guardá un mapping/)).toBeInTheDocument();
+  });
+
+  it("ejecuta una única vez cuando A/B y el mapping están listos", async () => {
+    useMappingMock.mockReturnValue({
+      data: {
+        archivo_a_id: 1,
+        archivo_b_id: 2,
+        columnas_archivo_a: ["Factura", "Importe"],
+        columnas_archivo_b: ["Factura", "Importe"],
+        columna_clave_archivo_a: "Factura",
+        columna_clave_archivo_b: "Factura",
+        columna_importe_archivo_a: "Importe",
+        columna_importe_archivo_b: "Importe",
+        detectar_duplicados: true,
+        tolerancia_importe: 0,
+      },
+      isPending: false,
+    } as never);
+
+    render(<ConciliationWorkspace executionId={31} />);
+    const button = screen.getByRole("button", { name: "Ejecutar conciliación" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(executeAsync).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("oculta el resultado anterior cuando cambia el borrador A/B", async () => {
+    useExecutionMock.mockReturnValue({
+      data: {
+        ...EXECUTION,
+        resumen_json: {
+          conciliacion_resumen: {
+            conciliados: 1,
+            diferencias_importe: 0,
+            duplicados_archivo_a: 0,
+            duplicados_archivo_b: 0,
+            ejecucion_id: 31,
+            errores_formato: 0,
+            estado_ejecucion: "APROBADO",
+            requiere_revision: 0,
+            solo_archivo_a: 0,
+            solo_archivo_b: 0,
+            total_resultados: 1,
+          },
+        },
+      },
+      isPending: false,
+    } as never);
+    useMappingMock.mockReturnValue({
+      data: {
+        archivo_a_id: 1,
+        archivo_b_id: 2,
+        columnas_archivo_a: ["Factura", "Importe"],
+        columnas_archivo_b: ["Factura", "Importe"],
+        columna_clave_archivo_a: "Factura",
+        columna_clave_archivo_b: "Factura",
+        columna_importe_archivo_a: "Importe",
+        columna_importe_archivo_b: "Importe",
+        detectar_duplicados: true,
+        tolerancia_importe: 0,
+      },
+      isPending: false,
+    } as never);
+
+    render(<ConciliationWorkspace executionId={31} />);
+    expect(await screen.findByText("Resultado desactualizado")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cambiar A" }));
+    expect(screen.getByText("Resultado desactualizado")).toBeInTheDocument();
+    expect(screen.queryByText("Resultado de conciliación")).not.toBeInTheDocument();
   });
 });

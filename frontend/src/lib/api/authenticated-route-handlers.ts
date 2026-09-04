@@ -2,6 +2,7 @@ import type { ProcessRead } from "@/features/processes/types";
 import type {
   ConciliationFileSelection,
   ConciliationMappingCreate,
+  ConciliationResult,
 } from "@/features/conciliations/types";
 import {
   parseConciliationFile,
@@ -9,6 +10,8 @@ import {
   parseConciliationFilePreview,
   parseConciliationFileSelection,
   parseConciliationMapping,
+  parseConciliationResultList,
+  parseConciliationSummary,
   parseExecutionList,
   parseExecutionRead,
   parseProcessList,
@@ -89,6 +92,10 @@ const ERROR_PAYLOADS = {
   invalidConciliationMapping: {
     code: "INVALID_CONCILIATION_MAPPING",
     message: "La configuraci\u00f3n de conciliaci\u00f3n no es v\u00e1lida.",
+  },
+  invalidConciliationExecution: {
+    code: "INVALID_CONCILIATION_EXECUTION",
+    message: "No se pudo ejecutar la conciliación con la configuración guardada.",
   },
   invalidConciliationPreview: {
     code: "INVALID_CONCILIATION_PREVIEW",
@@ -1316,6 +1323,69 @@ export async function handleSaveConciliationMappingRequest(
   if (!result.ok) return result.response;
   const savedMapping = parseConciliationMapping(result.value);
   return savedMapping ? jsonResponse(savedMapping) : errorResponse(ERROR_PAYLOADS.internal, 500);
+}
+
+export async function handleExecuteConciliationRequest(
+  request: Request,
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  if (!isSameOriginRequest(request)) return errorResponse(ERROR_PAYLOADS.invalidOrigin, 403);
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+  const contextResult = await validateConciliationExecution(
+    executionId,
+    sessionResult.value,
+    dependencies,
+  );
+  if (!contextResult.ok) return contextResult.response;
+
+  const result = await callBackend(
+    `/conciliaciones/${executionId}/ejecutar`,
+    sessionResult.value,
+    dependencies,
+    { headers: { Accept: "application/json" }, method: "POST" },
+    { 400: ERROR_PAYLOADS.invalidConciliationExecution },
+  );
+  if (!result.ok) return result.response;
+
+  const summary = parseConciliationSummary(result.value);
+  return summary && summary.ejecucion_id === executionId
+    ? jsonResponse(summary)
+    : errorResponse(ERROR_PAYLOADS.internal, 500);
+}
+
+export async function handleGetConciliationResultsRequest(
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+  const contextResult = await validateConciliationExecution(
+    executionId,
+    sessionResult.value,
+    dependencies,
+  );
+  if (!contextResult.ok) return contextResult.response;
+
+  const result = await callBackend(
+    `/conciliaciones/${executionId}/resultados`,
+    sessionResult.value,
+    dependencies,
+    { headers: { Accept: "application/json" }, method: "GET" },
+  );
+  if (!result.ok) return result.response;
+
+  const results = parseConciliationResultList(result.value);
+  return results && results.every((item: ConciliationResult) => item.ejecucion_id === executionId)
+    ? jsonResponse(results)
+    : errorResponse(ERROR_PAYLOADS.internal, 500);
 }
 
 export async function handleGetConciliationPreviewRequest(

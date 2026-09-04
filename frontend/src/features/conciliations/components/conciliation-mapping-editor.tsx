@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertCircle, Save } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -60,6 +60,8 @@ interface ConciliationMappingEditorProps {
   mappingError: unknown;
   mappingLoading: boolean;
   mappingSelectionDirty: boolean;
+  onDraftChange?: () => void;
+  onDirtyChange?: (isDirty: boolean) => void;
   onRetry: () => void;
   onRetryColumns: () => void;
   onSave: (mapping: ConciliationMappingCreate) => Promise<ConciliationMapping>;
@@ -77,6 +79,8 @@ export function ConciliationMappingEditor({
   mappingError,
   mappingLoading,
   mappingSelectionDirty,
+  onDraftChange,
+  onDirtyChange,
   onRetry,
   onRetryColumns,
   onSave,
@@ -98,6 +102,7 @@ export function ConciliationMappingEditor({
   const setDraft = (
     update: DraftMapping | ((current: DraftMapping) => DraftMapping),
   ) => {
+    onDraftChange?.();
     setDraftState((current) => {
       const currentDraft = current.sourceKey === sourceKey ? current.draft : savedDraft;
       return {
@@ -122,6 +127,9 @@ export function ConciliationMappingEditor({
     draft.columna_importe_archivo_b,
   ].every((column) => column !== "");
   const isDirty = !mappingMatchesSelection || !sameDraft(draft, savedDraft);
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
   const selectionReady = archivoAId !== null && archivoBId !== null && !mappingSelectionDirty;
   const canSave = selectionReady && !columnsLoading && !columnsError && complete && !missingColumns && validTolerance && isDirty && !saving;
   const disabled = !selectionReady || columnsLoading || Boolean(columnsError) || saving;

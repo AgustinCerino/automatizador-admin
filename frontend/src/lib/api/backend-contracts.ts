@@ -6,6 +6,8 @@ import type {
   ConciliationFileSelection,
   ConciliationMapping,
   ConciliationMappingCreate,
+  ConciliationResult,
+  ConciliationSummary,
 } from "@/features/conciliations/types";
 import type {
   TransformationSourceFile,
@@ -219,6 +221,63 @@ export function parseConciliationMapping(
   if (!isConciliationMappingCreate(record)) return undefined;
 
   return value as ConciliationMapping;
+}
+
+export function parseConciliationSummary(
+  value: unknown,
+): ConciliationSummary | undefined {
+  if (!isRecord(value)) return undefined;
+  const counters = [
+    value.total_resultados,
+    value.conciliados,
+    value.diferencias_importe,
+    value.solo_archivo_a,
+    value.solo_archivo_b,
+    value.duplicados_archivo_a,
+    value.duplicados_archivo_b,
+    value.errores_formato,
+    value.requiere_revision,
+  ];
+  if (
+    !isPositiveInteger(value.ejecucion_id) ||
+    !counters.every(isNonNegativeInteger) ||
+    typeof value.estado_ejecucion !== "string"
+  ) {
+    return undefined;
+  }
+
+  return value as ConciliationSummary;
+}
+
+export function parseConciliationResult(
+  value: unknown,
+): ConciliationResult | undefined {
+  if (
+    !isRecord(value) ||
+    !isPositiveInteger(value.id) ||
+    !isPositiveInteger(value.ejecucion_id) ||
+    !isNullableString(value.clave_referencia) ||
+    typeof value.estado_resultado !== "string" ||
+    (value.datos_archivo_a_json !== null && !isRecord(value.datos_archivo_a_json)) ||
+    (value.datos_archivo_b_json !== null && !isRecord(value.datos_archivo_b_json)) ||
+    !isNullableString(value.diferencia_importe) ||
+    typeof value.requiere_revision !== "boolean" ||
+    !isNullableString(value.observacion) ||
+    typeof value.created_at !== "string" ||
+    !isNullableString(value.updated_at)
+  ) {
+    return undefined;
+  }
+
+  return value as ConciliationResult;
+}
+
+export function parseConciliationResultList(
+  value: unknown,
+): ConciliationResult[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const results = value.map(parseConciliationResult);
+  return results.every((result) => result !== undefined) ? results : undefined;
 }
 
 export function parseConciliationFilePreview(

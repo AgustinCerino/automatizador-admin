@@ -12,3 +12,7 @@ export type ConciliationMappingCreate =
   components["schemas"]["ConciliacionMappingCreate"];
 export type ConciliationMapping =
   components["schemas"]["ConciliacionMappingRead"];
+export type ConciliationSummary =
+  components["schemas"]["ConciliacionResumenRead"];
+export type ConciliationResult =
+  components["schemas"]["ResultadoConciliacionRead"];

@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertCircle, Save } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { ErrorState } from "@/components/feedback/error-state";
 import { PageHeader } from "@/components/layout/page-header";
@@ -32,13 +32,19 @@ import {
   useSaveConciliationMapping,
   useSaveConciliationSelection,
 } from "@/features/conciliations/api/use-conciliation-files";
+import {
+  useConciliationResultsQuery,
+  useExecuteConciliation,
+} from "@/features/conciliations/api/use-conciliation-results";
 import { ConciliationMappingEditor } from "@/features/conciliations/components/conciliation-mapping-editor";
+import { ConciliationResultsPanel } from "@/features/conciliations/components/conciliation-results-panel";
 import { ConciliationFileSlot } from "@/features/conciliations/components/conciliation-file-slot";
 import type { ExecutionRead } from "@/features/executions/types";
 import { useExecutionQuery } from "@/features/executions/api/use-execution-query";
 import { useProcessQuery } from "@/features/processes/api/use-process-query";
 import type { ProcessRead } from "@/features/processes/types";
 import { ApiError } from "@/lib/api/errors";
+import { parseConciliationSummary } from "@/lib/api/backend-contracts";
 import { formatDateTime } from "@/lib/format-date";
 
 interface DraftOverrides {
@@ -82,6 +88,9 @@ function ConciliationWorkspaceContent({
   const mappingQuery = useConciliationMappingQuery(execution.id);
   const saveMappingMutation = useSaveConciliationMapping(execution.id);
   const [draftOverrides, setDraftOverrides] = useState<DraftOverrides>({});
+  const [mappingDirty, setMappingDirty] = useState(false);
+  const [resultsStale, setResultsStale] = useState(false);
+  const executeInFlight = useRef(false);
 
   const persistedAId = selectionQuery.data?.archivo_a_id ?? null;
   const persistedBId = selectionQuery.data?.archivo_b_id ?? null;
@@ -104,6 +113,32 @@ function ConciliationWorkspaceContent({
     !saveMutation.isPending;
   const previewAQuery = useConciliationPreviewQuery(execution.id, persistedAId);
   const previewBQuery = useConciliationPreviewQuery(execution.id, persistedBId);
+  const mappingMatchesSelection = Boolean(
+    mappingQuery.data &&
+      mappingQuery.data.archivo_a_id === persistedAId &&
+      mappingQuery.data.archivo_b_id === persistedBId,
+  );
+  const configurationReady =
+    persistedAId !== null &&
+    persistedBId !== null &&
+    !isDirty &&
+    !mappingDirty &&
+    mappingMatchesSelection;
+  const persistedSummary = parseConciliationSummary(
+    execution.resumen_json && typeof execution.resumen_json === "object"
+      ? execution.resumen_json.conciliacion_resumen
+      : undefined,
+  ) ?? null;
+  const executeMutation = useExecuteConciliation(execution.id);
+  const summary = executeMutation.data ?? persistedSummary;
+  const recoveredResultCannotBeVerified =
+    executeMutation.data === undefined && persistedSummary !== null;
+  const stale =
+    resultsStale || !configurationReady || recoveredResultCannotBeVerified;
+  const resultsQuery = useConciliationResultsQuery(
+    execution.id,
+    Boolean(summary) && !stale,
+  );
 
   async function saveSelection() {
     if (!canSave || draftAId === null || draftBId === null) return;
@@ -117,6 +152,31 @@ function ConciliationWorkspaceContent({
       // La mutación expone el error controlado.
     }
   }
+
+  async function executeConciliation() {
+    if (!configurationReady || executeMutation.isPending || executeInFlight.current) return;
+    executeInFlight.current = true;
+    try {
+      await executeMutation.mutateAsync();
+      setResultsStale(false);
+    } catch {
+      // La mutación expone el error controlado sin perder el workspace.
+    } finally {
+      executeInFlight.current = false;
+    }
+  }
+
+  const configurationMessage = !persistedAId
+    ? "Seleccioná y guardá el Archivo A antes de ejecutar."
+    : !persistedBId
+      ? "Seleccioná y guardá el Archivo B antes de ejecutar."
+      : isDirty
+        ? "Guardá los cambios de Archivo A/B antes de ejecutar la conciliación."
+        : !mappingMatchesSelection
+          ? "Guardá un mapping para los archivos A/B seleccionados antes de ejecutar."
+          : mappingDirty
+            ? "Guardá los cambios del mapping antes de ejecutar la conciliación."
+            : null;
 
   const executionsHref = `/procesos/${process.id}/ejecuciones`;
 
@@ -192,7 +252,10 @@ function ConciliationWorkspaceContent({
             <ConciliationFileSlot
               executionId={execution.id}
               files={filesQuery.data}
-              onSelect={(archivoAId) => setDraftOverrides((current) => ({ ...current, archivoAId }))}
+              onSelect={(archivoAId) => {
+                setResultsStale(true);
+                setDraftOverrides((current) => ({ ...current, archivoAId }));
+              }}
               otherSelectedId={draftBId}
               role="A"
               selectedId={draftAId}
@@ -200,7 +263,10 @@ function ConciliationWorkspaceContent({
             <ConciliationFileSlot
               executionId={execution.id}
               files={filesQuery.data}
-              onSelect={(archivoBId) => setDraftOverrides((current) => ({ ...current, archivoBId }))}
+              onSelect={(archivoBId) => {
+                setResultsStale(true);
+                setDraftOverrides((current) => ({ ...current, archivoBId }));
+              }}
               otherSelectedId={draftAId}
               role="B"
               selectedId={draftBId}
@@ -260,6 +326,8 @@ function ConciliationWorkspaceContent({
             mappingError={mappingQuery.error}
             mappingLoading={mappingQuery.isPending}
             mappingSelectionDirty={isDirty}
+            onDraftChange={() => setResultsStale(true)}
+            onDirtyChange={setMappingDirty}
             onRetry={() => void mappingQuery.refetch()}
             onRetryColumns={() => {
               void previewAQuery.refetch();
@@ -268,6 +336,19 @@ function ConciliationWorkspaceContent({
             onSave={saveMappingMutation.mutateAsync}
             saveError={saveMappingMutation.error}
             saving={saveMappingMutation.isPending}
+          />
+
+          <ConciliationResultsPanel
+            canExecute={configurationReady}
+            configurationMessage={configurationMessage}
+            executing={executeMutation.isPending}
+            executionError={executeMutation.error}
+            onExecute={() => void executeConciliation()}
+            results={resultsQuery.data}
+            resultsError={resultsQuery.error}
+            resultsLoading={resultsQuery.isPending}
+            stale={stale}
+            summary={summary}
           />
         </>
       ) : null}

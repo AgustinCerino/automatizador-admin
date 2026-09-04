@@ -10,6 +10,7 @@ const statusTones: Readonly<Record<string, StatusTone>> = {
   CONFIGURADO: "information",
   VALIDADO: "success",
   PROCESANDO: "warning",
+  REQUIERE_REVISION: "warning",
   COMPLETADO: "success",
   ERROR: "error",
   CANCELADO: "neutral",

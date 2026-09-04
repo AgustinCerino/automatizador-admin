@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/features/auth/types";
 import {
   handleGetConciliationMappingRequest,
+  handleGetConciliationResultsRequest,
   handleGetConciliationPreviewRequest,
   handleGetConciliationSelectionRequest,
   handleListConciliationFilesRequest,
   handleSaveConciliationSelectionRequest,
   handleSaveConciliationMappingRequest,
+  handleExecuteConciliationRequest,
   handleUploadConciliationFileRequest,
 } from "@/lib/api/authenticated-route-handlers";
 
@@ -296,5 +298,70 @@ describe("BFF de archivos de conciliación", () => {
     );
     expect(invalid.status).toBe(422);
     expect(invalidDependencies.fetchBackend).not.toHaveBeenCalled();
+  });
+  it("ejecuta mediante el BFF autenticado y valida el resumen del backend", async () => {
+    const summary = {
+      conciliados: 1,
+      diferencias_importe: 0,
+      duplicados_archivo_a: 0,
+      duplicados_archivo_b: 0,
+      ejecucion_id: 31,
+      errores_formato: 0,
+      estado_ejecucion: "APROBADO",
+      requiere_revision: 0,
+      solo_archivo_a: 0,
+      solo_archivo_b: 0,
+      total_resultados: 1,
+    };
+    const dependencies = createDependencies([
+      Response.json(EXECUTION),
+      Response.json(PROCESS),
+      Response.json(summary),
+    ]);
+
+    const response = await handleExecuteConciliationRequest(
+      new Request("http://localhost/api/backend/conciliaciones/31/ejecutar", { method: "POST" }),
+      "31",
+      dependencies,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(summary);
+    expect(dependencies.fetchBackend).toHaveBeenLastCalledWith(
+      "/conciliaciones/31/ejecutar",
+      TOKEN,
+      { headers: { Accept: "application/json" }, method: "POST" },
+    );
+  });
+
+  it("recupera los resultados sin exponer el backend al navegador", async () => {
+    const results = [{
+      clave_referencia: "FAC-1",
+      created_at: "2026-08-21T12:00:00Z",
+      datos_archivo_a_json: { Importe: 100 },
+      datos_archivo_b_json: { Monto: 100 },
+      diferencia_importe: "0",
+      ejecucion_id: 31,
+      estado_resultado: "CONCILIADO",
+      id: 71,
+      observacion: null,
+      requiere_revision: false,
+      updated_at: null,
+    }];
+    const dependencies = createDependencies([
+      Response.json(EXECUTION),
+      Response.json(PROCESS),
+      Response.json(results),
+    ]);
+
+    const response = await handleGetConciliationResultsRequest("31", dependencies);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(results);
+    expect(dependencies.fetchBackend).toHaveBeenLastCalledWith(
+      "/conciliaciones/31/resultados",
+      TOKEN,
+      { headers: { Accept: "application/json" }, method: "GET" },
+    );
   });
 });
