@@ -34,7 +34,9 @@ import {
 } from "@/features/conciliations/api/use-conciliation-files";
 import {
   useConciliationResultsQuery,
+  useConciliationRevisionSummaryQuery,
   useExecuteConciliation,
+  useUpdateConciliationRevision,
 } from "@/features/conciliations/api/use-conciliation-results";
 import { ConciliationMappingEditor } from "@/features/conciliations/components/conciliation-mapping-editor";
 import { ConciliationResultsPanel } from "@/features/conciliations/components/conciliation-results-panel";
@@ -139,6 +141,11 @@ function ConciliationWorkspaceContent({
     execution.id,
     Boolean(summary) && !stale,
   );
+  const revisionSummaryQuery = useConciliationRevisionSummaryQuery(
+    execution.id,
+    Boolean(summary) && !stale,
+  );
+  const updateRevisionMutation = useUpdateConciliationRevision(execution.id);
 
   async function saveSelection() {
     if (!canSave || draftAId === null || draftBId === null) return;
@@ -347,6 +354,13 @@ function ConciliationWorkspaceContent({
             results={resultsQuery.data}
             resultsError={resultsQuery.error}
             resultsLoading={resultsQuery.isPending}
+            revisionSummary={revisionSummaryQuery.data}
+            revisionSummaryError={revisionSummaryQuery.error}
+            reviewError={updateRevisionMutation.error}
+            reviewSaving={updateRevisionMutation.isPending}
+            onSaveReview={async (result, update) => {
+              await updateRevisionMutation.mutateAsync({ resultId: result.id, update });
+            }}
             stale={stale}
             summary={summary}
           />

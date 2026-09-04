@@ -16,3 +16,7 @@ export type ConciliationSummary =
   components["schemas"]["ConciliacionResumenRead"];
 export type ConciliationResult =
   components["schemas"]["ResultadoConciliacionRead"];
+export type ConciliationRevisionUpdate =
+  components["schemas"]["ResultadoRevisionUpdate"];
+export type ConciliationRevisionSummary =
+  components["schemas"]["RevisionResumenRead"];

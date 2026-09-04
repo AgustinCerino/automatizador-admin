@@ -7,6 +7,8 @@ import type {
   ConciliationMapping,
   ConciliationMappingCreate,
   ConciliationResult,
+  ConciliationRevisionSummary,
+  ConciliationRevisionUpdate,
   ConciliationSummary,
 } from "@/features/conciliations/types";
 import type {
@@ -278,6 +280,31 @@ export function parseConciliationResultList(
   if (!Array.isArray(value)) return undefined;
   const results = value.map(parseConciliationResult);
   return results.every((result) => result !== undefined) ? results : undefined;
+}
+
+export function parseConciliationRevisionUpdate(
+  value: unknown,
+): ConciliationRevisionUpdate | undefined {
+  if (!isRecord(value)) return undefined;
+  const keys = Object.keys(value);
+  if (keys.some((key) => key !== "observacion" && key !== "requiere_revision")) return undefined;
+  if (value.observacion !== undefined && !isNullableString(value.observacion)) return undefined;
+  if (value.requiere_revision !== undefined && value.requiere_revision !== null && typeof value.requiere_revision !== "boolean") return undefined;
+  return value as ConciliationRevisionUpdate;
+}
+
+export function parseConciliationRevisionSummary(
+  value: unknown,
+): ConciliationRevisionSummary | undefined {
+  if (!isRecord(value)) return undefined;
+  const counters = [
+    value.total_resultados, value.pendientes_revision, value.revisados,
+    value.conciliados, value.diferencias_importe, value.solo_archivo_a,
+    value.solo_archivo_b, value.duplicados_archivo_a,
+    value.duplicados_archivo_b, value.errores_formato,
+  ];
+  if (!isPositiveInteger(value.ejecucion_id) || !counters.every(isNonNegativeInteger) || typeof value.estado_ejecucion !== "string") return undefined;
+  return value as ConciliationRevisionSummary;
 }
 
 export function parseConciliationFilePreview(

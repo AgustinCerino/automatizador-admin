@@ -4,7 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   executeConciliation,
+  getConciliationRevisionSummary,
   getConciliationResults,
+  updateConciliationRevision,
 } from "@/features/conciliations/api/conciliation-results-api";
 import { useRedirectOnSessionExpired, useSessionExpiredHandler } from "@/lib/auth/use-session-expired";
 import { isPositiveInteger } from "@/lib/identifiers";
@@ -36,6 +38,33 @@ export function useExecuteConciliation(executionId: number) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.conciliations.results(executionId) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.executions.detail(executionId) }),
+      ]);
+    },
+  });
+}
+
+export function useConciliationRevisionSummaryQuery(executionId: number, enabled: boolean) {
+  const query = useQuery({
+    enabled: enabled && isPositiveInteger(executionId),
+    queryFn: () => getConciliationRevisionSummary(executionId),
+    queryKey: queryKeys.conciliations.revisionSummary(executionId),
+    retry: shouldRetryQuery,
+    staleTime: 15_000,
+  });
+  useRedirectOnSessionExpired(query.error);
+  return query;
+}
+
+export function useUpdateConciliationRevision(executionId: number) {
+  const queryClient = useQueryClient();
+  const handleSessionExpired = useSessionExpiredHandler();
+  return useMutation({
+    mutationFn: ({ resultId, update }: { resultId: number; update: import("@/features/conciliations/types").ConciliationRevisionUpdate }) => updateConciliationRevision(executionId, resultId, update),
+    onError: handleSessionExpired,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.conciliations.results(executionId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.conciliations.revisionSummary(executionId) }),
       ]);
     },
   });

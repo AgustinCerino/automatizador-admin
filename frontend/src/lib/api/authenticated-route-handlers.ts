@@ -11,6 +11,9 @@ import {
   parseConciliationFileSelection,
   parseConciliationMapping,
   parseConciliationResultList,
+  parseConciliationResult,
+  parseConciliationRevisionSummary,
+  parseConciliationRevisionUpdate,
   parseConciliationSummary,
   parseExecutionList,
   parseExecutionRead,
@@ -1386,6 +1389,50 @@ export async function handleGetConciliationResultsRequest(
   return results && results.every((item: ConciliationResult) => item.ejecucion_id === executionId)
     ? jsonResponse(results)
     : errorResponse(ERROR_PAYLOADS.internal, 500);
+}
+
+export async function handleGetConciliationRevisionSummaryRequest(
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+  const contextResult = await validateConciliationExecution(executionId, sessionResult.value, dependencies);
+  if (!contextResult.ok) return contextResult.response;
+  const result = await callBackend(`/conciliaciones/${executionId}/revision-resumen`, sessionResult.value, dependencies, { headers: { Accept: "application/json" }, method: "GET" });
+  if (!result.ok) return result.response;
+  const summary = parseConciliationRevisionSummary(result.value);
+  return summary && summary.ejecucion_id === executionId ? jsonResponse(summary) : errorResponse(ERROR_PAYLOADS.internal, 500);
+}
+
+export async function handleUpdateConciliationRevisionRequest(
+  request: Request,
+  rawExecutionId: string,
+  rawResultId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  if (!isSameOriginRequest(request)) return errorResponse(ERROR_PAYLOADS.invalidOrigin, 403);
+  const executionId = parsePositiveInteger(rawExecutionId);
+  const resultId = parsePositiveInteger(rawResultId);
+  if (!executionId || !resultId) return invalidIdentifierResponse();
+  let body: unknown;
+  try { body = await request.json(); } catch { return errorResponse(ERROR_PAYLOADS.invalidRequest, 400); }
+  const update = parseConciliationRevisionUpdate(body);
+  if (!update) return errorResponse(ERROR_PAYLOADS.validation, 422);
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+  const contextResult = await validateConciliationExecution(executionId, sessionResult.value, dependencies);
+  if (!contextResult.ok) return contextResult.response;
+  const current = await callBackend(`/conciliaciones/${executionId}/resultados`, sessionResult.value, dependencies, { headers: { Accept: "application/json" }, method: "GET" });
+  if (!current.ok) return current.response;
+  const results = parseConciliationResultList(current.value);
+  if (!results || !results.some((item) => item.id === resultId)) return errorResponse(ERROR_PAYLOADS.notFound, 404);
+  const result = await callBackend(`/conciliaciones/resultados/${resultId}/revision`, sessionResult.value, dependencies, { body: JSON.stringify(update), headers: { Accept: "application/json", "Content-Type": "application/json" }, method: "PATCH" });
+  if (!result.ok) return result.response;
+  const updated = parseConciliationResult(result.value);
+  return updated && updated.id === resultId && updated.ejecucion_id === executionId ? jsonResponse(updated) : errorResponse(ERROR_PAYLOADS.internal, 500);
 }
 
 export async function handleGetConciliationPreviewRequest(

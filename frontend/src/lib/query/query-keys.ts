@@ -13,6 +13,8 @@ export const queryKeys = {
       ["conciliations", "detail", executionId, "mapping"] as const,
     results: (executionId: number) =>
       ["conciliations", "detail", executionId, "results"] as const,
+    revisionSummary: (executionId: number) =>
+      ["conciliations", "detail", executionId, "revision-summary"] as const,
   },
   executions: {
     all: ["executions"] as const,

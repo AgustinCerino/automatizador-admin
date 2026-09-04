@@ -11,7 +11,9 @@ import {
 } from "@/features/conciliations/api/use-conciliation-files";
 import {
   useConciliationResultsQuery,
+  useConciliationRevisionSummaryQuery,
   useExecuteConciliation,
+  useUpdateConciliationRevision,
 } from "@/features/conciliations/api/use-conciliation-results";
 import { ConciliationWorkspace } from "@/features/conciliations/components/conciliation-workspace";
 import { useExecutionQuery } from "@/features/executions/api/use-execution-query";
@@ -33,7 +35,9 @@ vi.mock("@/features/conciliations/api/use-conciliation-files", () => ({
 }));
 vi.mock("@/features/conciliations/api/use-conciliation-results", () => ({
   useConciliationResultsQuery: vi.fn(),
+  useConciliationRevisionSummaryQuery: vi.fn(),
   useExecuteConciliation: vi.fn(),
+  useUpdateConciliationRevision: vi.fn(),
 }));
 vi.mock("@/features/conciliations/components/conciliation-mapping-editor", () => ({
   ConciliationMappingEditor: () => <section aria-label="Mapping" />,
@@ -62,7 +66,9 @@ const useSelectionMock = vi.mocked(useConciliationSelectionQuery);
 const useSaveMappingMock = vi.mocked(useSaveConciliationMapping);
 const useSaveMock = vi.mocked(useSaveConciliationSelection);
 const useResultsMock = vi.mocked(useConciliationResultsQuery);
+const useRevisionSummaryMock = vi.mocked(useConciliationRevisionSummaryQuery);
 const useExecuteMock = vi.mocked(useExecuteConciliation);
+const useUpdateRevisionMock = vi.mocked(useUpdateConciliationRevision);
 
 const EXECUTION = {
   created_at: "2026-08-21T12:00:00Z",
@@ -141,6 +147,8 @@ describe("ConciliationWorkspace", () => {
       mutateAsync: vi.fn(),
     } as never);
     useResultsMock.mockReturnValue({ data: undefined, isPending: false } as never);
+    useRevisionSummaryMock.mockReturnValue({ data: undefined, error: null } as never);
+    useUpdateRevisionMock.mockReturnValue({ error: null, isPending: false, mutateAsync: vi.fn() } as never);
     useExecuteMock.mockReturnValue({
       data: undefined,
       error: null,

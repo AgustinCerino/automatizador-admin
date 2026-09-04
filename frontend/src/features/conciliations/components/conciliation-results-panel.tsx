@@ -1,118 +1,29 @@
 "use client";
 
 import { AlertCircle, LoaderCircle, Play, TriangleAlert } from "lucide-react";
-
+import { useState } from "react";
 import { StatusBadge } from "@/components/data-display/status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { ConciliationResult, ConciliationSummary } from "@/features/conciliations/types";
+import { Textarea } from "@/components/ui/textarea";
+import type { ConciliationResult, ConciliationRevisionSummary, ConciliationSummary } from "@/features/conciliations/types";
 import { ApiError } from "@/lib/api/errors";
 import { formatNumber } from "@/lib/format-values";
 
-const RESULT_LABELS: Readonly<Record<string, string>> = {
-  CONCILIADO: "Conciliado",
-  DIFERENCIA_IMPORTE: "Diferencia de importe",
-  SOLO_ARCHIVO_A: "Sólo archivo A",
-  SOLO_ARCHIVO_B: "Sólo archivo B",
-  DUPLICADO_ARCHIVO_A: "Duplicado en archivo A",
-  DUPLICADO_ARCHIVO_B: "Duplicado en archivo B",
-  ERROR_FORMATO: "Error de formato",
-};
+const RESULT_LABELS: Record<string, string> = { CONCILIADO: "Conciliado", DIFERENCIA_IMPORTE: "Diferencia de importe", SOLO_ARCHIVO_A: "Sólo archivo A", SOLO_ARCHIVO_B: "Sólo archivo B", DUPLICADO_ARCHIVO_A: "Duplicado en archivo A", DUPLICADO_ARCHIVO_B: "Duplicado en archivo B", ERROR_FORMATO: "Error de formato" };
+const message = (error: unknown, fallback: string) => error instanceof ApiError ? error.message : fallback;
+function valueOf(value: unknown): string { if (value == null) return "—"; if (["string", "number", "boolean"].includes(typeof value)) return String(value); try { return JSON.stringify(value); } catch { return "—"; } }
+function RecordDetails({ value }: { value: Record<string, unknown> | null }) { if (!value || !Object.keys(value).length) return <span className="text-muted-foreground">—</span>; return <dl className="space-y-1 text-xs">{Object.entries(value).map(([key, item]) => <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2" key={key}><dt className="truncate text-muted-foreground" title={key}>{key}</dt><dd className="truncate" title={valueOf(item)}>{valueOf(item)}</dd></div>)}</dl>; }
+function Summary({ summary }: { summary: ConciliationSummary }) { const metrics: [string, number][] = [["Total resultados", summary.total_resultados], ["Conciliados", summary.conciliados], ["Diferencias de importe", summary.diferencias_importe], ["Sólo archivo A", summary.solo_archivo_a], ["Sólo archivo B", summary.solo_archivo_b], ["Requieren revisión", summary.requiere_revision]]; return <Card><CardHeader><CardTitle><h2>Resultado de conciliación</h2></CardTitle><CardDescription>Estado final: <StatusBadge status={summary.estado_ejecucion} /></CardDescription></CardHeader><CardContent><dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">{metrics.map(([label, count]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="font-medium">{formatNumber(count)}</dd></div>)}</dl></CardContent></Card>; }
+function Progress({ summary }: { summary: ConciliationRevisionSummary }) { const metrics: [string, number][] = [["Pendientes", summary.pendientes_revision], ["Revisados", summary.revisados], ["Total", summary.total_resultados]]; return <Card><CardHeader><CardTitle><h2>Revisión manual</h2></CardTitle><CardDescription>Progreso informado por el backend.</CardDescription></CardHeader><CardContent><dl className="grid gap-3 text-sm sm:grid-cols-3">{metrics.map(([label, count]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="font-medium">{formatNumber(count)}</dd></div>)}</dl></CardContent></Card>; }
 
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof ApiError ? error.message : fallback;
-}
+type Update = { observacion: string | null; requiere_revision: boolean };
+function ReviewDialog({ result, open, close, onSave, saving, saveError }: { result: ConciliationResult | null; open: boolean; close: () => void; onSave: (result: ConciliationResult, update: Update) => Promise<void>; saving: boolean; saveError: unknown }) { const [note, setNote] = useState(result?.observacion ?? ""); const [pending, setPending] = useState(result?.requiere_revision ?? true); if (!result) return null; return <Dialog open={open} onOpenChange={(next) => { if (!next) close(); }}><DialogContent className="max-h-[calc(100vh-2rem)] max-w-4xl overflow-y-auto"><DialogHeader><DialogTitle>Revisar resultado</DialogTitle><DialogDescription>Resultado #{result.id} · {RESULT_LABELS[result.estado_resultado] ?? result.estado_resultado}</DialogDescription></DialogHeader><div className="space-y-4"><dl className="grid gap-3 text-sm sm:grid-cols-3"><div><dt className="text-muted-foreground">Referencia</dt><dd>{result.clave_referencia ?? "—"}</dd></div><div><dt className="text-muted-foreground">Diferencia</dt><dd>{result.diferencia_importe ?? "—"}</dd></div><div><dt className="text-muted-foreground">Revisión</dt><dd>{result.requiere_revision ? "Pendiente" : "Revisada"}</dd></div></dl><div className="grid min-w-0 gap-4 md:grid-cols-2"><section aria-label="Archivo A" className="min-w-0 rounded-lg border p-3"><h3 className="mb-3 font-medium">Archivo A</h3><RecordDetails value={result.datos_archivo_a_json} /></section><section aria-label="Archivo B" className="min-w-0 rounded-lg border p-3"><h3 className="mb-3 font-medium">Archivo B</h3><RecordDetails value={result.datos_archivo_b_json} /></section></div><div className="space-y-3"><div className="flex items-center gap-2"><input checked={!pending} id="revision-completa" onChange={(event) => setPending(!event.target.checked)} type="checkbox" /><Label htmlFor="revision-completa">Marcar revisión como completada</Label></div><div className="space-y-2"><Label htmlFor="observacion">Observación</Label><Textarea id="observacion" onChange={(event) => setNote(event.target.value)} value={note} /></div>{saveError ? <Alert variant="destructive"><AlertCircle aria-hidden="true" /><AlertTitle>No pudimos guardar la revisión</AlertTitle><AlertDescription>{message(saveError, "Revisá los datos e intentá nuevamente.")}</AlertDescription></Alert> : null}</div></div><DialogFooter><Button disabled={saving} onClick={() => void onSave(result, { observacion: note || null, requiere_revision: pending })} type="button">{saving ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : null}{saving ? "Guardando…" : "Guardar revisión"}</Button></DialogFooter></DialogContent></Dialog>; }
+function Results({ items, choose }: { items: ConciliationResult[]; choose: (item: ConciliationResult) => void }) { const [filter, setFilter] = useState<"ALL" | "PENDING" | "REVIEWED">("ALL"); const shown = items.filter((item) => filter === "ALL" || (filter === "PENDING" ? item.requiere_revision : !item.requiere_revision)); return <Card><CardHeader><CardTitle><h2>Resultados</h2></CardTitle><CardDescription>Lectura de las filas producidas por el motor de conciliación.</CardDescription><div className="flex gap-2 pt-2" role="group" aria-label="Filtro de revisión">{[["ALL", "Todos"], ["PENDING", "Pendientes"], ["REVIEWED", "Revisados"]].map(([key, label]) => <Button key={key} onClick={() => setFilter(key as typeof filter)} size="sm" type="button" variant={filter === key ? "default" : "outline"}>{label}</Button>)}</div></CardHeader><CardContent>{!items.length ? <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">La conciliación se ejecutó correctamente y no produjo resultados.</p> : !shown.length ? <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No hay resultados para este filtro.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Referencia</TableHead><TableHead>Estado</TableHead><TableHead>Archivo A</TableHead><TableHead>Archivo B</TableHead><TableHead>Diferencia</TableHead><TableHead>Observación</TableHead><TableHead>Revisión</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader><TableBody>{shown.map((item) => <TableRow key={item.id}><TableCell className="font-medium">{item.clave_referencia ?? "—"}</TableCell><TableCell>{RESULT_LABELS[item.estado_resultado] ?? item.estado_resultado}</TableCell><TableCell><RecordDetails value={item.datos_archivo_a_json} /></TableCell><TableCell><RecordDetails value={item.datos_archivo_b_json} /></TableCell><TableCell>{item.diferencia_importe ?? "—"}</TableCell><TableCell>{item.observacion ?? "—"}</TableCell><TableCell>{item.requiere_revision ? "Pendiente" : "Revisada"}</TableCell><TableCell><Button onClick={() => choose(item)} size="sm" type="button" variant="outline">{item.requiere_revision ? "Revisar" : "Editar revisión"}</Button></TableCell></TableRow>)}</TableBody></Table></div>}</CardContent></Card>; }
 
-function renderValue(value: unknown): string {
-  if (value === null || value === undefined) return "—";
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return "—";
-  }
-}
-
-function RecordDetails({ value }: { value: Record<string, unknown> | null }) {
-  if (!value) return <span className="text-muted-foreground">—</span>;
-  const entries = Object.entries(value);
-  if (entries.length === 0) return <span className="text-muted-foreground">—</span>;
-  return <dl className="min-w-48 space-y-1 text-xs">
-    {entries.map(([key, item]) => (
-      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2" key={key}>
-        <dt className="truncate text-muted-foreground" title={key}>{key}</dt>
-        <dd className="truncate" title={renderValue(item)}>{renderValue(item)}</dd>
-      </div>
-    ))}
-  </dl>;
-}
-
-function ResultState({ state }: { state: string }) {
-  return <span aria-label={`Estado: ${RESULT_LABELS[state] ?? state}`} className="text-sm font-medium">{RESULT_LABELS[state] ?? state}</span>;
-}
-
-function Summary({ summary }: { summary: ConciliationSummary }) {
-  const metrics = [
-    ["Total resultados", summary.total_resultados],
-    ["Conciliados", summary.conciliados],
-    ["Diferencias de importe", summary.diferencias_importe],
-    ["Sólo archivo A", summary.solo_archivo_a],
-    ["Sólo archivo B", summary.solo_archivo_b],
-    ["Duplicados archivo A", summary.duplicados_archivo_a],
-    ["Duplicados archivo B", summary.duplicados_archivo_b],
-    ["Errores de formato", summary.errores_formato],
-    ["Requieren revisión", summary.requiere_revision],
-  ] as const;
-  return <Card>
-    <CardHeader>
-      <CardTitle><h2>Resultado de conciliación</h2></CardTitle>
-      <CardDescription>Estado final: <StatusBadge status={summary.estado_ejecucion} /></CardDescription>
-    </CardHeader>
-    <CardContent>
-      <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
-        {metrics.map(([label, value]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="font-medium">{formatNumber(value)}</dd></div>)}
-      </dl>
-    </CardContent>
-  </Card>;
-}
-
-function ResultsTable({ results }: { results: ConciliationResult[] }) {
-  return <Card>
-    <CardHeader><CardTitle><h2>Resultados</h2></CardTitle><CardDescription>Lectura de las filas producidas por el motor de conciliación.</CardDescription></CardHeader>
-    <CardContent>
-      {results.length === 0 ? <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">La conciliación se ejecutó correctamente y no produjo resultados.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Referencia</TableHead><TableHead>Estado</TableHead><TableHead>Archivo A</TableHead><TableHead>Archivo B</TableHead><TableHead>Diferencia</TableHead><TableHead>Observación</TableHead><TableHead>Requiere revisión</TableHead></TableRow></TableHeader><TableBody>{results.map((result) => <TableRow key={result.id}><TableCell className="font-medium">{result.clave_referencia ?? "—"}</TableCell><TableCell><ResultState state={result.estado_resultado} /></TableCell><TableCell><RecordDetails value={result.datos_archivo_a_json} /></TableCell><TableCell><RecordDetails value={result.datos_archivo_b_json} /></TableCell>{<TableCell>{result.diferencia_importe ?? "—"}</TableCell>}<TableCell>{result.observacion ?? "—"}</TableCell><TableCell>{result.requiere_revision ? "Sí" : "No"}</TableCell></TableRow>)}</TableBody></Table></div>}
-    </CardContent>
-  </Card>;
-}
-
-interface ConciliationResultsPanelProps {
-  canExecute: boolean;
-  configurationMessage: string | null;
-  executing: boolean;
-  executionError: unknown;
-  onExecute: () => void;
-  results: ConciliationResult[] | undefined;
-  resultsError: unknown;
-  resultsLoading: boolean;
-  stale: boolean;
-  summary: ConciliationSummary | null;
-}
-
-export function ConciliationResultsPanel({ canExecute, configurationMessage, executing, executionError, onExecute, results, resultsError, resultsLoading, stale, summary }: ConciliationResultsPanelProps) {
-  return <section className="space-y-4" aria-label="Ejecución de conciliación">
-    <Card><CardHeader><CardTitle><h2>Ejecutar conciliación</h2></CardTitle><CardDescription>Procesá explícitamente los archivos y el mapping guardados.</CardDescription></CardHeader><CardContent className="space-y-4">
-      {configurationMessage ? <Alert><TriangleAlert aria-hidden="true" /><AlertTitle>Falta configuración vigente</AlertTitle><AlertDescription>{configurationMessage}</AlertDescription></Alert> : null}
-      {stale ? <Alert><TriangleAlert aria-hidden="true" /><AlertTitle>Resultado desactualizado</AlertTitle><AlertDescription>Los archivos o el mapping cambiaron, o el backend no permite verificar la configuración que produjo el resultado. Ejecutá nuevamente para ver resultados vigentes.</AlertDescription></Alert> : null}
-      {executionError ? <Alert variant="destructive"><AlertCircle aria-hidden="true" /><AlertTitle>No pudimos ejecutar la conciliación</AlertTitle><AlertDescription>{errorMessage(executionError, "No pudimos comunicarnos con el servidor. Intentá nuevamente.")}</AlertDescription></Alert> : null}
-      <Button disabled={!canExecute || executing} onClick={onExecute} type="button">{executing ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Play aria-hidden="true" />}{executing ? "Ejecutando…" : summary && !stale ? "Reejecutar conciliación" : "Ejecutar conciliación"}</Button>
-    </CardContent></Card>
-    {!stale && summary ? <Summary summary={summary} /> : null}
-    {!stale && summary && resultsLoading ? <Card><CardContent className="py-6 text-sm text-muted-foreground" role="status">Cargando resultados…</CardContent></Card> : null}
-    {!stale && summary && resultsError ? <Card><CardContent className="py-6"><Alert variant="destructive"><AlertCircle aria-hidden="true" /><AlertTitle>No pudimos cargar los resultados</AlertTitle><AlertDescription>{errorMessage(resultsError, "Intentá recargar la página.")}</AlertDescription></Alert></CardContent></Card> : null}
-    {!stale && summary && results && !resultsLoading && !resultsError ? <ResultsTable results={results} /> : null}
-  </section>;
-}
+interface Props { canExecute: boolean; configurationMessage: string | null; executing: boolean; executionError: unknown; onExecute: () => void; results: ConciliationResult[] | undefined; resultsError: unknown; resultsLoading: boolean; stale: boolean; summary: ConciliationSummary | null; revisionSummary?: ConciliationRevisionSummary; revisionSummaryError?: unknown; reviewSaving?: boolean; reviewError?: unknown; onSaveReview?: (result: ConciliationResult, update: Update) => Promise<void>; }
+export function ConciliationResultsPanel({ canExecute, configurationMessage, executing, executionError, onExecute, results, resultsError, resultsLoading, stale, summary, revisionSummary, revisionSummaryError, reviewSaving = false, reviewError, onSaveReview = async () => {} }: Props) { const [selected, setSelected] = useState<ConciliationResult | null>(null); async function save(item: ConciliationResult, update: Update) { await onSaveReview(item, update); setSelected(null); } return <section className="space-y-4" aria-label="Ejecución de conciliación"><Card><CardHeader><CardTitle><h2>Ejecutar conciliación</h2></CardTitle><CardDescription>Procesá explícitamente los archivos y el mapping guardados.</CardDescription></CardHeader><CardContent className="space-y-4">{configurationMessage ? <Alert><TriangleAlert aria-hidden="true" /><AlertTitle>Falta configuración vigente</AlertTitle><AlertDescription>{configurationMessage}</AlertDescription></Alert> : null}{stale ? <Alert><TriangleAlert aria-hidden="true" /><AlertTitle>Resultado desactualizado</AlertTitle><AlertDescription>Los archivos o el mapping cambiaron, o el backend no permite verificar la configuración que produjo el resultado. Ejecutá nuevamente para ver resultados vigentes.</AlertDescription></Alert> : null}{executionError ? <Alert variant="destructive"><AlertCircle aria-hidden="true" /><AlertTitle>No pudimos ejecutar la conciliación</AlertTitle><AlertDescription>{message(executionError, "No pudimos comunicarnos con el servidor. Intentá nuevamente.")}</AlertDescription></Alert> : null}<Button disabled={!canExecute || executing} onClick={onExecute} type="button">{executing ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Play aria-hidden="true" />}{executing ? "Ejecutando…" : summary && !stale ? "Reejecutar conciliación" : "Ejecutar conciliación"}</Button></CardContent></Card>{!stale && summary ? <Summary summary={summary} /> : null}{!stale && summary && revisionSummary ? <Progress summary={revisionSummary} /> : null}{!stale && summary && revisionSummaryError ? <Alert variant="destructive"><AlertCircle aria-hidden="true" /><AlertTitle>No pudimos cargar el progreso de revisión</AlertTitle><AlertDescription>{message(revisionSummaryError, "Intentá recargar la página.")}</AlertDescription></Alert> : null}{!stale && summary && resultsLoading ? <Card><CardContent className="py-6 text-sm text-muted-foreground" role="status">Cargando resultados…</CardContent></Card> : null}{!stale && summary && resultsError ? <Card><CardContent className="py-6"><Alert variant="destructive"><AlertCircle aria-hidden="true" /><AlertTitle>No pudimos cargar los resultados</AlertTitle><AlertDescription>{message(resultsError, "Intentá recargar la página.")}</AlertDescription></Alert></CardContent></Card> : null}{!stale && summary && results && !resultsLoading && !resultsError ? <Results choose={setSelected} items={results} /> : null}<ReviewDialog key={selected?.id} close={() => setSelected(null)} onSave={save} open={selected !== null} result={selected} saveError={reviewError} saving={reviewSaving} /></section>; }

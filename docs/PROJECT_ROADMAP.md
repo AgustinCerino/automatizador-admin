@@ -65,6 +65,7 @@ No expandir el esquema por defecto. Si una tarea requiere modelos, tablas o rela
 | Tarea 35 — Workspace base y gestión de archivos de Conciliación Excel | Completado | Workspace frontend con navegación por tipo de proceso, carga y listado de archivos compatibles, selección explícita y persistente de Archivo A/B, recuperación tras recarga y previews independientes mediante el BFF. |
 | Tarea 36 — Configuración y persistencia del mapping de Conciliación Excel | Completado | Configuración frontend del mapping de conciliación basada en los archivos A/B persistidos, con guardado, recuperación, dirty state y manejo de cambios de archivos. |
 | Tarea 37 — Ejecución de Conciliación Excel y visualización de resultados | Completado | Ejecución frontend del proceso de conciliación con precondiciones, consulta de resultados, resumen operativo, tabla de resultados y manejo seguro de estados stale. |
+| Tarea 38 — Revisión manual de resultados de Conciliación Excel | Completado | Revisión manual frontend de resultados con comparación A/B, persistencia de estado y observaciones, resumen de progreso y recuperación desde backend tras F5. |
 
 ### Frontend posterior a Tarea 22
 
