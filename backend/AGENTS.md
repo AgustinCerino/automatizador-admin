@@ -10,7 +10,7 @@ Estas instrucciones complementan el `/AGENTS.md` raíz.
 * PostgreSQL
 * Alembic
 * Pydantic
-* Pytest
+* `unittest` (suite existente en `tests/`)
 
 El backend corre localmente en:
 
@@ -61,7 +61,7 @@ No cambiar contratos existentes salvo que la tarea lo requiera explícitamente.
 
 ## Authentication and authorization
 
-El proyecto dispone de autenticación basada en Bearer token.
+FastAPI emite un JWT al autenticar y protege los endpoints autenticados con `Authorization: Bearer <token>`. En la aplicación web, el navegador guarda el JWT únicamente en una cookie de sesión `HttpOnly` administrada por Next.js. Los Route Handlers leen esa cookie del lado servidor y llaman a FastAPI con el header Bearer; el token no se entrega al JavaScript del navegador.
 
 Endpoints relevantes existentes:
 
@@ -198,6 +198,8 @@ Según el alcance ejecutar:
 * tests del endpoint afectado;
 * tests de integración relevantes;
 * suite backend completa cuando el cambio sea transversal.
+
+Desde `backend/`, la suite completa se ejecuta con `python -B -m unittest discover -s tests -p "test_*.py"` usando el intérprete del entorno. `-B` evita reescribir archivos `.pyc` versionados. Las pruebas de integración se omiten sin `TEST_DATABASE_URL` configurada para una PostgreSQL exclusiva de testing.
 
 Revisar también:
 
