@@ -79,8 +79,17 @@ export function useSaveConciliationMapping(executionId: number) {
     mutationFn: (mapping: ConciliationMappingCreate) =>
       saveConciliationMapping(executionId, mapping),
     onError: handleSessionExpired,
-    onSuccess: (mapping) => {
+    onSuccess: async (mapping) => {
       queryClient.setQueryData(queryKeys.conciliations.mapping(executionId), mapping);
+      queryClient.removeQueries({
+        queryKey: queryKeys.conciliations.results(executionId),
+      });
+      queryClient.removeQueries({
+        queryKey: queryKeys.conciliations.revisionSummary(executionId),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.executions.detail(executionId),
+      });
     },
   });
 }

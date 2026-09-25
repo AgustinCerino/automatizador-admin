@@ -1,9 +1,9 @@
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models import Archivo
+from app.models import Archivo, ResultadoConciliacion
 from app.schemas.conciliacion_mapping import ConciliacionMappingCreate
 from app.services.conciliacion_archivos_service import (
     get_authorized_conciliation_execution,
@@ -130,6 +130,19 @@ def save_conciliacion_mapping(
         "columnas_archivo_b": columnas_archivo_b,
     }
     resumen_json = dict(ejecucion.resumen_json or {})
+    mapping_changed = resumen_json.get("conciliacion_mapping") != mapping
+    if mapping_changed:
+        db.execute(
+            delete(ResultadoConciliacion).where(
+                ResultadoConciliacion.ejecucion_id == ejecucion_id,
+            ),
+        )
+        resumen_json.pop("conciliacion_resumen", None)
+        resumen_json.pop("rechazo", None)
+        ejecucion.estado = "CARGADO"
+        ejecucion.error_message = None
+        ejecucion.finished_at = None
+
     resumen_json["conciliacion_mapping"] = mapping
     ejecucion.resumen_json = resumen_json
 

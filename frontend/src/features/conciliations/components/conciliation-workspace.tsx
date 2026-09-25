@@ -133,10 +133,7 @@ function ConciliationWorkspaceContent({
   ) ?? null;
   const executeMutation = useExecuteConciliation(execution.id);
   const summary = executeMutation.data ?? persistedSummary;
-  const recoveredResultCannotBeVerified =
-    executeMutation.data === undefined && persistedSummary !== null;
-  const stale =
-    resultsStale || !configurationReady || recoveredResultCannotBeVerified;
+  const stale = resultsStale || !configurationReady;
   const resultsQuery = useConciliationResultsQuery(
     execution.id,
     Boolean(summary) && !stale,
@@ -358,9 +355,21 @@ function ConciliationWorkspaceContent({
             revisionSummaryError={revisionSummaryQuery.error}
             reviewError={updateRevisionMutation.error}
             reviewSaving={updateRevisionMutation.isPending}
+            onReviewStart={updateRevisionMutation.reset}
             onSaveReview={async (result, update) => {
-              await updateRevisionMutation.mutateAsync({ resultId: result.id, update });
+              await updateRevisionMutation.mutateAsync({
+                resultId: result.id,
+                update: {
+                  ...update,
+                  expected_updated_at: result.updated_at,
+                },
+              });
             }}
+            reviewAllowed={
+              (revisionSummaryQuery.data?.estado_ejecucion
+                ?? summary?.estado_ejecucion
+                ?? execution.estado) === "REQUIERE_REVISION"
+            }
             stale={stale}
             summary={summary}
           />

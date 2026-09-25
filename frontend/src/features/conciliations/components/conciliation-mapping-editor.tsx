@@ -114,10 +114,12 @@ export function ConciliationMappingEditor({
 
   const columnsLoading = !columnsError && (columnsA === null || columnsB === null);
   const missingColumns =
-    (draft.columna_clave_archivo_a !== "" && !columnsA?.includes(draft.columna_clave_archivo_a)) ||
-    (draft.columna_importe_archivo_a !== "" && !columnsA?.includes(draft.columna_importe_archivo_a)) ||
-    (draft.columna_clave_archivo_b !== "" && !columnsB?.includes(draft.columna_clave_archivo_b)) ||
-    (draft.columna_importe_archivo_b !== "" && !columnsB?.includes(draft.columna_importe_archivo_b));
+    !columnsLoading &&
+    !columnsError &&
+    ((draft.columna_clave_archivo_a !== "" && !columnsA?.includes(draft.columna_clave_archivo_a)) ||
+      (draft.columna_importe_archivo_a !== "" && !columnsA?.includes(draft.columna_importe_archivo_a)) ||
+      (draft.columna_clave_archivo_b !== "" && !columnsB?.includes(draft.columna_clave_archivo_b)) ||
+      (draft.columna_importe_archivo_b !== "" && !columnsB?.includes(draft.columna_importe_archivo_b)));
   const numericTolerance = Number(draft.tolerancia_importe);
   const validTolerance = draft.tolerancia_importe.trim() !== "" && Number.isFinite(numericTolerance);
   const complete = [
@@ -174,10 +176,10 @@ export function ConciliationMappingEditor({
         {columnsError ? <Alert variant="destructive"><AlertCircle aria-hidden="true" /><AlertTitle>No pudimos cargar las columnas</AlertTitle><AlertDescription><p>Reintentá cargar los previews antes de guardar el mapping.</p><Button className="mt-3" onClick={onRetryColumns} type="button" variant="outline">Reintentar previews</Button></AlertDescription></Alert> : null}
         {missingColumns ? <Alert variant="destructive"><AlertCircle aria-hidden="true" /><AlertTitle>Hay columnas que ya no existen</AlertTitle><AlertDescription>Seleccioná una columna válida antes de guardar. No reemplazamos columnas automáticamente.</AlertDescription></Alert> : null}
         <div className="grid gap-4 md:grid-cols-2">
-          <ColumnSelect columns={columnsA ?? []} disabled={disabled} id="conciliation-key-a" label="Clave · Archivo A" onChange={(value) => setDraft((current) => ({ ...current, columna_clave_archivo_a: value }))} value={draft.columna_clave_archivo_a} />
-          <ColumnSelect columns={columnsB ?? []} disabled={disabled} id="conciliation-key-b" label="Clave · Archivo B" onChange={(value) => setDraft((current) => ({ ...current, columna_clave_archivo_b: value }))} value={draft.columna_clave_archivo_b} />
-          <ColumnSelect columns={columnsA ?? []} disabled={disabled} id="conciliation-amount-a" label="Importe · Archivo A" onChange={(value) => setDraft((current) => ({ ...current, columna_importe_archivo_a: value }))} value={draft.columna_importe_archivo_a} />
-          <ColumnSelect columns={columnsB ?? []} disabled={disabled} id="conciliation-amount-b" label="Importe · Archivo B" onChange={(value) => setDraft((current) => ({ ...current, columna_importe_archivo_b: value }))} value={draft.columna_importe_archivo_b} />
+          <ColumnSelect columns={columnsA ?? []} disabled={disabled} id="conciliation-key-a" label="Clave · Archivo A" onChange={(value) => setDraft((current) => ({ ...current, columna_clave_archivo_a: value }))} showUnavailable={!columnsLoading && !columnsError} value={draft.columna_clave_archivo_a} />
+          <ColumnSelect columns={columnsB ?? []} disabled={disabled} id="conciliation-key-b" label="Clave · Archivo B" onChange={(value) => setDraft((current) => ({ ...current, columna_clave_archivo_b: value }))} showUnavailable={!columnsLoading && !columnsError} value={draft.columna_clave_archivo_b} />
+          <ColumnSelect columns={columnsA ?? []} disabled={disabled} id="conciliation-amount-a" label="Importe · Archivo A" onChange={(value) => setDraft((current) => ({ ...current, columna_importe_archivo_a: value }))} showUnavailable={!columnsLoading && !columnsError} value={draft.columna_importe_archivo_a} />
+          <ColumnSelect columns={columnsB ?? []} disabled={disabled} id="conciliation-amount-b" label="Importe · Archivo B" onChange={(value) => setDraft((current) => ({ ...current, columna_importe_archivo_b: value }))} showUnavailable={!columnsLoading && !columnsError} value={draft.columna_importe_archivo_b} />
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2"><Label htmlFor="conciliation-tolerance">Tolerancia de importe</Label><Input aria-invalid={!validTolerance} disabled={disabled} id="conciliation-tolerance" inputMode="decimal" onChange={(event) => setDraft((current) => ({ ...current, tolerancia_importe: event.target.value }))} type="number" value={draft.tolerancia_importe} /><p className="text-xs text-muted-foreground">Valor numérico; el backend valida la regla final.</p></div>
@@ -190,7 +192,7 @@ export function ConciliationMappingEditor({
   );
 }
 
-function ColumnSelect({ columns, disabled, id, label, onChange, value }: { columns: readonly string[]; disabled: boolean; id: string; label: string; onChange: (value: string) => void; value: string }) {
-  const unavailable = value !== "" && !columns.includes(value);
+function ColumnSelect({ columns, disabled, id, label, onChange, showUnavailable, value }: { columns: readonly string[]; disabled: boolean; id: string; label: string; onChange: (value: string) => void; showUnavailable: boolean; value: string }) {
+  const unavailable = showUnavailable && value !== "" && !columns.includes(value);
   return <div className="space-y-2"><Label htmlFor={id}>{label}</Label><Select disabled={disabled} onValueChange={onChange} value={value || undefined}><SelectTrigger id={id}><SelectValue placeholder="Seleccioná una columna" /></SelectTrigger><SelectContent>{unavailable ? <SelectItem value={value}>{`Columna no disponible: ${value}`}</SelectItem> : null}{columns.map((column) => <SelectItem key={column} value={column}>{column}</SelectItem>)}</SelectContent></Select></div>;
 }

@@ -1088,6 +1088,8 @@ export interface components {
         };
         /** ResultadoRevisionUpdate */
         ResultadoRevisionUpdate: {
+            /** Expected Updated At */
+            expected_updated_at: string | null;
             /** Observacion */
             observacion?: string | null;
             /** Requiere Revision */

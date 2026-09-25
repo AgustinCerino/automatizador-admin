@@ -1,7 +1,10 @@
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict
 
 
 class ResultadoRevisionUpdate(BaseModel):
+    expected_updated_at: datetime | None
     observacion: str | None = None
     requiere_revision: bool | None = None
 

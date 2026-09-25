@@ -273,7 +273,10 @@ describe("ConciliationWorkspace", () => {
     } as never);
 
     render(<ConciliationWorkspace executionId={31} />);
-    expect(await screen.findByText("Resultado desactualizado")).toBeInTheDocument();
+    expect(await screen.findByText(/Resultado de conciliaci/)).toBeInTheDocument();
+    expect(useResultsMock).toHaveBeenCalledWith(31, true);
+    expect(useRevisionSummaryMock).toHaveBeenCalledWith(31, true);
+    expect(screen.queryByText("Resultado desactualizado")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Cambiar A" }));
     expect(screen.getByText("Resultado desactualizado")).toBeInTheDocument();
     expect(screen.queryByText("Resultado de conciliación")).not.toBeInTheDocument();

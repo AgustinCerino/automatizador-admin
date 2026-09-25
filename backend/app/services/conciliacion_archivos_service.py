@@ -32,6 +32,8 @@ def get_authorized_conciliation_execution(
     db: Session,
     ejecucion_id: int,
     cliente_id: int,
+    *,
+    conceal_forbidden: bool = False,
 ) -> EjecucionProceso:
     ejecucion = db.execute(
         select(EjecucionProceso).where(EjecucionProceso.id == ejecucion_id),
@@ -43,6 +45,8 @@ def get_authorized_conciliation_execution(
         ejecucion.proceso.cliente_id != cliente_id
         or ejecucion.usuario.cliente_id != cliente_id
     ):
+        if conceal_forbidden:
+            raise ConciliacionArchivosNotFoundError("Ejecución no encontrada")
         raise ConciliacionArchivosAccessDeniedError(
             "No tenés permisos para acceder a esta ejecución",
         )

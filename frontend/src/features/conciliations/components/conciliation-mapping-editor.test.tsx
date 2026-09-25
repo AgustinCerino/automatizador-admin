@@ -78,4 +78,38 @@ describe("ConciliationMappingEditor", () => {
     expect(screen.getByText("Hay columnas que ya no existen")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Guardar mapping" })).toBeDisabled();
   });
+
+  it("espera ambos previews antes de validar columnas históricas", () => {
+    const props: ComponentProps<typeof ConciliationMappingEditor> = {
+      archivoAId: 1,
+      archivoBId: 2,
+      columnsA: ["Factura", "Importe"],
+      columnsB: null,
+      columnsError: null,
+      mapping: MAPPING,
+      mappingError: null,
+      mappingLoading: false,
+      mappingSelectionDirty: false,
+      onRetry: vi.fn(),
+      onRetryColumns: vi.fn(),
+      onSave: vi.fn().mockResolvedValue(MAPPING),
+      saveError: null,
+      saving: false,
+    };
+    const { rerender } = render(<ConciliationMappingEditor {...props} />);
+
+    expect(screen.getByText("Cargando columnas de los archivos seleccionados…")).toBeInTheDocument();
+    expect(screen.queryByText("Hay columnas que ya no existen")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Columna no disponible/)).not.toBeInTheDocument();
+
+    rerender(
+      <ConciliationMappingEditor
+        {...props}
+        columnsB={["Comprobante", "Monto"]}
+      />,
+    );
+
+    expect(screen.queryByText("Hay columnas que ya no existen")).not.toBeInTheDocument();
+    expect(screen.getByText("Mapping sincronizado")).toBeInTheDocument();
+  });
 });

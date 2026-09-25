@@ -100,6 +100,17 @@ function mappingRequest(body: unknown): Request {
   });
 }
 
+function reviewRequest(body: unknown): Request {
+  return new Request(
+    "http://localhost/api/backend/conciliaciones/31/resultados/71/revision",
+    {
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json", Origin: "http://localhost" },
+      method: "PATCH",
+    },
+  );
+}
+
 function uploadRequest(file: File): Request {
   const data = new FormData();
   data.append("file", file);
@@ -370,7 +381,7 @@ describe("BFF de archivos de conciliación", () => {
   it("guarda la revisión con el payload real y recupera su resumen", async () => {
     const result = { clave_referencia: "FAC-1", created_at: "2026-08-21T12:00:00Z", datos_archivo_a_json: { Importe: 120 }, datos_archivo_b_json: { Monto: 100 }, diferencia_importe: "20", ejecucion_id: 31, estado_resultado: "DIFERENCIA_IMPORTE", id: 71, observacion: "Revisado", requiere_revision: false, updated_at: "2026-08-21T12:05:00Z" };
     const dependencies = createDependencies([Response.json(EXECUTION), Response.json(PROCESS), Response.json([result]), Response.json(result)]);
-    const response = await handleUpdateConciliationRevisionRequest(writeRequest({ observacion: "Revisado", requiere_revision: false }), "31", "71", dependencies);
+    const response = await handleUpdateConciliationRevisionRequest(reviewRequest({ observacion: "Revisado", requiere_revision: false }), "31", "71", dependencies);
     expect(response.status).toBe(200);
     expect(JSON.parse(String(vi.mocked(dependencies.fetchBackend).mock.calls[3][2]?.body))).toEqual({ observacion: "Revisado", requiere_revision: false });
     expect(vi.mocked(dependencies.fetchBackend).mock.calls[3][0]).toBe("/conciliaciones/resultados/71/revision");
@@ -378,5 +389,27 @@ describe("BFF de archivos de conciliación", () => {
     const summary = { conciliados: 0, diferencias_importe: 1, duplicados_archivo_a: 0, duplicados_archivo_b: 0, ejecucion_id: 31, errores_formato: 0, estado_ejecucion: "REQUIERE_REVISION", pendientes_revision: 1, revisados: 0, solo_archivo_a: 0, solo_archivo_b: 0, total_resultados: 1 };
     const summaryDependencies = createDependencies([Response.json(EXECUTION), Response.json(PROCESS), Response.json(summary)]);
     await expect((await handleGetConciliationRevisionSummaryRequest("31", summaryDependencies)).json()).resolves.toEqual(summary);
+  });
+
+  it("no reenvía una revisión cuando la ejecución pertenece a otro cliente", async () => {
+    const dependencies = createDependencies([
+      Response.json(EXECUTION),
+      Response.json({ ...PROCESS, cliente_id: USER.cliente_id + 1 }),
+    ]);
+
+    const response = await handleUpdateConciliationRevisionRequest(
+      reviewRequest({ observacion: "No autorizada", requiere_revision: false }),
+      "31",
+      "71",
+      dependencies,
+    );
+
+    expect(response.status).toBe(403);
+    expect(dependencies.fetchBackend).toHaveBeenCalledTimes(2);
+    expect(dependencies.fetchBackend).not.toHaveBeenCalledWith(
+      "/conciliaciones/resultados/71/revision",
+      expect.anything(),
+      expect.anything(),
+    );
   });
 });

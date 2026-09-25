@@ -60,3 +60,11 @@ export function getNavigationItem(pathname: string) {
     isNavigationItemActive(pathname, item.href),
   );
 }
+
+export function getPageContextLabel(pathname: string): string {
+  if (/^\/conciliaciones\/[^/]+\/?$/.test(pathname)) {
+    return "Conciliación Excel";
+  }
+
+  return getNavigationItem(pathname)?.label ?? "Página";
+}

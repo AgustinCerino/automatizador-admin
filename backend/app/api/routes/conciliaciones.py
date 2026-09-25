@@ -72,7 +72,12 @@ def update_revision(
     current_user: Usuario = Depends(get_current_user),
 ) -> ResultadoConciliacion:
     try:
-        return update_resultado_revision(db, resultado_id, revision_in)
+        return update_resultado_revision(
+            db,
+            resultado_id,
+            revision_in,
+            current_user.cliente_id,
+        )
     except ConciliacionRevisionError as exc:
         raise_revision_http_error(exc)
 
@@ -190,7 +195,12 @@ def read_results(
     current_user: Usuario = Depends(get_current_user),
 ) -> list[ResultadoConciliacion]:
     try:
-        return list_reconciliation_results(db, ejecucion_id, estado_resultado)
+        return list_reconciliation_results(
+            db,
+            ejecucion_id,
+            current_user.cliente_id,
+            estado_resultado,
+        )
     except ConciliacionMappingError as exc:
         raise_mapping_http_error(exc)
 
@@ -226,7 +236,7 @@ def read_revision_summary(
     current_user: Usuario = Depends(get_current_user),
 ) -> dict:
     try:
-        return get_revision_summary(db, ejecucion_id)
+        return get_revision_summary(db, ejecucion_id, current_user.cliente_id)
     except ConciliacionRevisionError as exc:
         raise_revision_http_error(exc)
 

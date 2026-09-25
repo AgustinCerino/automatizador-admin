@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { MobileNavigation } from "@/components/layout/mobile-navigation";
 import { UserMenu } from "@/features/auth/components/user-menu";
 import type { CurrentUser } from "@/features/auth/types";
-import { getNavigationItem } from "@/lib/navigation";
+import { getPageContextLabel } from "@/lib/navigation";
 
 interface AppHeaderProps {
   user: CurrentUser;
@@ -14,7 +14,7 @@ interface AppHeaderProps {
 
 export function AppHeader({ user }: AppHeaderProps) {
   const pathname = usePathname();
-  const currentItem = getNavigationItem(pathname);
+  const contextLabel = getPageContextLabel(pathname);
 
   return (
     <header className="sticky top-0 z-30 h-16 border-b border-primary/20 bg-card">
@@ -36,7 +36,7 @@ export function AppHeader({ user }: AppHeaderProps) {
               aria-current="page"
               className="truncate font-medium text-primary"
             >
-              {currentItem?.label ?? "Página"}
+              {contextLabel}
             </li>
           </ol>
         </nav>

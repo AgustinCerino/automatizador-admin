@@ -13,6 +13,10 @@ from app.services.conciliacion_mapping_service import (
     ConciliacionMappingNotFoundError,
     ConciliacionResourceNotFoundError,
 )
+from app.services.conciliacion_archivos_service import (
+    ConciliacionArchivosError,
+    get_authorized_conciliation_execution,
+)
 from app.services.file_preview_service import (
     FilePreviewError,
     StoredFileNotFoundError,
@@ -371,9 +375,23 @@ def execute_reconciliation(db: Session, ejecucion_id: int) -> dict[str, Any]:
 def list_reconciliation_results(
     db: Session,
     ejecucion_id: int,
+    cliente_id: int,
     estado_resultado: str | None = None,
 ) -> list[ResultadoConciliacion]:
-    get_execution(db, ejecucion_id)
+    try:
+        get_authorized_conciliation_execution(
+            db,
+            ejecucion_id,
+            cliente_id,
+            conceal_forbidden=True,
+        )
+    except ConciliacionArchivosError as exc:
+        error = (
+            ConciliacionResourceNotFoundError(str(exc))
+            if exc.status_code == 404
+            else ConciliacionMappingError(str(exc))
+        )
+        raise error from exc
     statement = (
         select(ResultadoConciliacion)
         .where(ResultadoConciliacion.ejecucion_id == ejecucion_id)
