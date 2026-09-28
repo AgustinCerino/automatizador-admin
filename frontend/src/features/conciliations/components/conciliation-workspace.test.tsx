@@ -40,7 +40,14 @@ vi.mock("@/features/conciliations/api/use-conciliation-results", () => ({
   useUpdateConciliationRevision: vi.fn(),
 }));
 vi.mock("@/features/conciliations/components/conciliation-mapping-editor", () => ({
-  ConciliationMappingEditor: () => <section aria-label="Mapping" />,
+  ConciliationMappingEditor: ({ onDirtyChange }: {
+    onDirtyChange: (dirty: boolean) => void;
+  }) => (
+    <section aria-label="Mapping">
+      <button onClick={() => onDirtyChange(true)} type="button">Modificar mapping</button>
+      <button onClick={() => onDirtyChange(false)} type="button">Restaurar mapping</button>
+    </section>
+  ),
 }));
 vi.mock("@/features/conciliations/components/conciliation-file-slot", () => ({
   ConciliationFileSlot: ({ onSelect, role, selectedId }: {
@@ -280,5 +287,55 @@ describe("ConciliationWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cambiar A" }));
     expect(screen.getByText("Resultado desactualizado")).toBeInTheDocument();
     expect(screen.queryByText("Resultado de conciliación")).not.toBeInTheDocument();
+  });
+
+  it("vuelve a mostrar resultados válidos al restaurar exactamente el mapping", async () => {
+    useExecutionMock.mockReturnValue({
+      data: {
+        ...EXECUTION,
+        resumen_json: {
+          conciliacion_resumen: {
+            conciliados: 1,
+            diferencias_importe: 0,
+            duplicados_archivo_a: 0,
+            duplicados_archivo_b: 0,
+            ejecucion_id: 31,
+            errores_formato: 0,
+            estado_ejecucion: "APROBADO",
+            requiere_revision: 0,
+            solo_archivo_a: 0,
+            solo_archivo_b: 0,
+            total_resultados: 1,
+          },
+        },
+      },
+      isPending: false,
+    } as never);
+    useMappingMock.mockReturnValue({
+      data: {
+        archivo_a_id: 1,
+        archivo_b_id: 2,
+        columnas_archivo_a: ["Factura", "Importe"],
+        columnas_archivo_b: ["Factura", "Importe"],
+        columna_clave_archivo_a: "Factura",
+        columna_clave_archivo_b: "Factura",
+        columna_importe_archivo_a: "Importe",
+        columna_importe_archivo_b: "Importe",
+        detectar_duplicados: true,
+        tolerancia_importe: 0,
+      },
+      isPending: false,
+    } as never);
+
+    render(<ConciliationWorkspace executionId={31} />);
+    expect(await screen.findByText(/Resultado de conciliaci/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Modificar mapping" }));
+    expect(screen.getByText("Resultado desactualizado")).toBeInTheDocument();
+    expect(screen.queryByText(/Resultado de conciliaci/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Restaurar mapping" }));
+    expect(screen.queryByText("Resultado desactualizado")).not.toBeInTheDocument();
+    expect(screen.getByText(/Resultado de conciliaci/)).toBeInTheDocument();
   });
 });

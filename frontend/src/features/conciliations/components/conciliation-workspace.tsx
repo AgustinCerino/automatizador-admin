@@ -91,7 +91,7 @@ function ConciliationWorkspaceContent({
   const saveMappingMutation = useSaveConciliationMapping(execution.id);
   const [draftOverrides, setDraftOverrides] = useState<DraftOverrides>({});
   const [mappingDirty, setMappingDirty] = useState(false);
-  const [resultsStale, setResultsStale] = useState(false);
+  const [persistedResultsStale, setPersistedResultsStale] = useState(false);
   const executeInFlight = useRef(false);
 
   const persistedAId = selectionQuery.data?.archivo_a_id ?? null;
@@ -133,7 +133,7 @@ function ConciliationWorkspaceContent({
   ) ?? null;
   const executeMutation = useExecuteConciliation(execution.id);
   const summary = executeMutation.data ?? persistedSummary;
-  const stale = resultsStale || !configurationReady;
+  const stale = persistedResultsStale || !configurationReady;
   const resultsQuery = useConciliationResultsQuery(
     execution.id,
     Boolean(summary) && !stale,
@@ -162,7 +162,7 @@ function ConciliationWorkspaceContent({
     executeInFlight.current = true;
     try {
       await executeMutation.mutateAsync();
-      setResultsStale(false);
+      setPersistedResultsStale(false);
     } catch {
       // La mutación expone el error controlado sin perder el workspace.
     } finally {
@@ -257,7 +257,6 @@ function ConciliationWorkspaceContent({
               executionId={execution.id}
               files={filesQuery.data}
               onSelect={(archivoAId) => {
-                setResultsStale(true);
                 setDraftOverrides((current) => ({ ...current, archivoAId }));
               }}
               otherSelectedId={draftBId}
@@ -268,7 +267,6 @@ function ConciliationWorkspaceContent({
               executionId={execution.id}
               files={filesQuery.data}
               onSelect={(archivoBId) => {
-                setResultsStale(true);
                 setDraftOverrides((current) => ({ ...current, archivoBId }));
               }}
               otherSelectedId={draftAId}
@@ -330,14 +328,17 @@ function ConciliationWorkspaceContent({
             mappingError={mappingQuery.error}
             mappingLoading={mappingQuery.isPending}
             mappingSelectionDirty={isDirty}
-            onDraftChange={() => setResultsStale(true)}
             onDirtyChange={setMappingDirty}
             onRetry={() => void mappingQuery.refetch()}
             onRetryColumns={() => {
               void previewAQuery.refetch();
               void previewBQuery.refetch();
             }}
-            onSave={saveMappingMutation.mutateAsync}
+            onSave={async (mapping) => {
+              const savedMapping = await saveMappingMutation.mutateAsync(mapping);
+              setPersistedResultsStale(true);
+              return savedMapping;
+            }}
             saveError={saveMappingMutation.error}
             saving={saveMappingMutation.isPending}
           />

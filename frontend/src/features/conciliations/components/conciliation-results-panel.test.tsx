@@ -200,17 +200,42 @@ describe("ConciliationResultsPanel", () => {
     });
   });
 
-  it("mantiene abierto el detalle y muestra el error controlado", () => {
-    render(<ConciliationResultsPanel
+  it("cierra la versión obsoleta tras 409 y permite reabrir la versión reconsultada", async () => {
+    const conflict = new ApiError(409, {
+      message: "La revisión cambió en el servidor.",
+    });
+    const onSaveReview = vi.fn()
+      .mockRejectedValueOnce(conflict)
+      .mockResolvedValueOnce(undefined);
+    const { rerender } = render(<ConciliationResultsPanel
       {...BASE_PROPS}
-      results={[PENDING_RESULT]}
-      reviewError={new ApiError(409, { message: "La revisión cambió en el servidor." })}
+      onSaveReview={onSaveReview}
+      results={[{ ...PENDING_RESULT, updated_at: "2026-08-21T12:00:00Z" }]}
     />);
 
     fireEvent.click(screen.getByRole("button", { name: "Revisar" }));
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText("No pudimos guardar la revisión")).toBeInTheDocument();
-    expect(screen.getByText("La revisión cambió en el servidor.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Guardar revisión" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("La revisión cambió en el servidor")).toBeInTheDocument();
+
+    const refreshedResult = {
+      ...PENDING_RESULT,
+      observacion: "Versión V2",
+      updated_at: "2026-08-21T12:05:00Z",
+    };
+    rerender(<ConciliationResultsPanel
+      {...BASE_PROPS}
+      onSaveReview={onSaveReview}
+      results={[refreshedResult]}
+    />);
+    fireEvent.click(screen.getByRole("button", { name: "Revisar" }));
+    expect(screen.getByDisplayValue("Versión V2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Guardar revisión" }));
+
+    await waitFor(() => expect(onSaveReview).toHaveBeenCalledTimes(2));
+    expect(onSaveReview.mock.calls[1][0]).toEqual(refreshedResult);
   });
 
   it("impide editar revisiones cuando la ejecución está cerrada", () => {

@@ -34,10 +34,12 @@ def get_authorized_conciliation_execution(
     cliente_id: int,
     *,
     conceal_forbidden: bool = False,
+    lock_for_update: bool = False,
 ) -> EjecucionProceso:
-    ejecucion = db.execute(
-        select(EjecucionProceso).where(EjecucionProceso.id == ejecucion_id),
-    ).scalar_one_or_none()
+    statement = select(EjecucionProceso).where(EjecucionProceso.id == ejecucion_id)
+    if lock_for_update:
+        statement = statement.with_for_update()
+    ejecucion = db.execute(statement).scalar_one_or_none()
     if ejecucion is None:
         raise ConciliacionArchivosNotFoundError("Ejecución no encontrada")
 

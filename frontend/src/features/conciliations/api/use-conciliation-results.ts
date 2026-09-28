@@ -8,6 +8,7 @@ import {
   getConciliationResults,
   updateConciliationRevision,
 } from "@/features/conciliations/api/conciliation-results-api";
+import { ApiError } from "@/lib/api/errors";
 import { useRedirectOnSessionExpired, useSessionExpiredHandler } from "@/lib/auth/use-session-expired";
 import { isPositiveInteger } from "@/lib/identifiers";
 import { queryKeys } from "@/lib/query/query-keys";
@@ -60,12 +61,22 @@ export function useUpdateConciliationRevision(executionId: number) {
   const handleSessionExpired = useSessionExpiredHandler();
   return useMutation({
     mutationFn: ({ resultId, update }: { resultId: number; update: import("@/features/conciliations/types").ConciliationRevisionUpdate }) => updateConciliationRevision(executionId, resultId, update),
-    onError: handleSessionExpired,
+    onError: async (error) => {
+      handleSessionExpired(error);
+      if (error instanceof ApiError && error.status === 409) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.conciliations.results(executionId) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.conciliations.revisionSummary(executionId) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.executions.detail(executionId) }),
+        ]);
+      }
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.conciliations.results(executionId) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.conciliations.revisionSummary(executionId) }),
       ]);
     },
+    retry: false,
   });
 }

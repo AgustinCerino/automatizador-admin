@@ -287,7 +287,18 @@ export function parseConciliationRevisionUpdate(
 ): ConciliationRevisionUpdate | undefined {
   if (!isRecord(value)) return undefined;
   const keys = Object.keys(value);
-  if (keys.some((key) => key !== "observacion" && key !== "requiere_revision")) return undefined;
+  if (
+    !Object.hasOwn(value, "expected_updated_at") ||
+    keys.some(
+      (key) =>
+        key !== "expected_updated_at" &&
+        key !== "observacion" &&
+        key !== "requiere_revision",
+    )
+  ) {
+    return undefined;
+  }
+  if (!isNullableString(value.expected_updated_at)) return undefined;
   if (value.observacion !== undefined && !isNullableString(value.observacion)) return undefined;
   if (value.requiere_revision !== undefined && value.requiere_revision !== null && typeof value.requiere_revision !== "boolean") return undefined;
   return value as ConciliationRevisionUpdate;

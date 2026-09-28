@@ -1,7 +1,9 @@
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -216,11 +218,56 @@ class ConciliacionRevisionSecurityTests(unittest.TestCase):
 
             revision = update_revision(
                 self.result_id,
-                self._revision_payload(observacion="Validado por el propietario"),
+                self._revision_payload(
+                    expected_updated_at=results[0].updated_at,
+                    observacion="Validado por el propietario",
+                ),
                 db,
                 owner_user,
             )
             self.assertFalse(revision.requiere_revision)
+
+    def test_missing_result_returns_not_found(self) -> None:
+        with self.session_factory() as db:
+            with self.assertRaises(HTTPException) as context:
+                update_revision(
+                    999_999,
+                    self._revision_payload(),
+                    db,
+                    self.owner,
+                )
+
+        self.assertEqual(context.exception.status_code, 404)
+
+    def test_pending_result_with_existing_version_can_be_reviewed(self) -> None:
+        initial_version = datetime(2026, 9, 25, 16, 0, tzinfo=timezone.utc)
+        with self.session_factory() as db:
+            result = db.get(ResultadoConciliacion, self.result_id)
+            result.updated_at = initial_version
+            db.commit()
+
+        with self.session_factory() as db:
+            result_read = read_results(
+                self.execution_id,
+                None,
+                db,
+                self.owner,
+            )[0]
+            self.assertTrue(result_read.requiere_revision)
+            self.assertIsNotNone(result_read.updated_at)
+
+            revision = update_revision(
+                self.result_id,
+                self._revision_payload(
+                    expected_updated_at=result_read.updated_at,
+                    observacion="Primera revisión con versión persistida",
+                ),
+                db,
+                self.owner,
+            )
+
+        self.assertFalse(revision.requiere_revision)
+        self.assertNotEqual(revision.updated_at, initial_version)
 
     def test_mapping_change_invalidates_results_and_persisted_summary(self) -> None:
         changed_mapping = {
@@ -231,6 +278,15 @@ class ConciliacionRevisionSecurityTests(unittest.TestCase):
         changed_mapping["tolerancia_importe"] = 5.0
 
         with self.session_factory() as db:
+            execution = db.get(EjecucionProceso, self.execution_id)
+            execution.estado = "RECHAZADO"
+            execution.error_message = "Rechazo anterior"
+            execution.resumen_json = {
+                **execution.resumen_json,
+                "rechazo": {"motivo": "Rechazo anterior", "usuario_id": self.owner.id},
+            }
+            db.commit()
+
             create_or_replace_mapping(
                 self.execution_id,
                 ConciliacionMappingCreate(**changed_mapping),
@@ -254,12 +310,66 @@ class ConciliacionRevisionSecurityTests(unittest.TestCase):
             )
             self.assertEqual(result_count, 0)
             self.assertNotIn("conciliacion_resumen", execution.resumen_json)
+            self.assertNotIn("rechazo", execution.resumen_json)
             self.assertEqual(
                 execution.resumen_json["conciliacion_mapping"]["tolerancia_importe"],
                 5.0,
             )
             self.assertEqual(execution.estado, "CARGADO")
             self.assertIsNone(execution.finished_at)
+
+    def test_mapping_invalidation_rolls_back_completely_on_commit_error(self) -> None:
+        changed_mapping = {
+            key: value
+            for key, value in self.mapping.items()
+            if not key.startswith("columnas_archivo_")
+        }
+        changed_mapping["tolerancia_importe"] = 7.0
+
+        with self.session_factory() as db:
+            execution = db.get(EjecucionProceso, self.execution_id)
+            execution.estado = "RECHAZADO"
+            execution.error_message = "Rechazo que debe conservarse"
+            execution.resumen_json = {
+                **execution.resumen_json,
+                "rechazo": {
+                    "motivo": "Rechazo que debe conservarse",
+                    "usuario_id": self.owner.id,
+                },
+            }
+            db.commit()
+            expected_summary = deepcopy(execution.resumen_json)
+            expected_finished_at = execution.finished_at
+
+        with self.assertRaisesRegex(RuntimeError, "fallo controlado"):
+            with self.session_factory() as db:
+                with patch.object(
+                    db,
+                    "commit",
+                    side_effect=RuntimeError("fallo controlado antes del commit"),
+                ):
+                    create_or_replace_mapping(
+                        self.execution_id,
+                        ConciliacionMappingCreate(**changed_mapping),
+                        db,
+                        self.owner,
+                    )
+
+        with self.session_factory() as db:
+            execution = db.get(EjecucionProceso, self.execution_id)
+            result_count = db.scalar(
+                select(func.count(ResultadoConciliacion.id)).where(
+                    ResultadoConciliacion.ejecucion_id == self.execution_id,
+                ),
+            )
+            self.assertEqual(result_count, 1)
+            self.assertEqual(execution.resumen_json, expected_summary)
+            self.assertEqual(execution.estado, "RECHAZADO")
+            self.assertEqual(
+                execution.error_message,
+                "Rechazo que debe conservarse",
+            )
+            self.assertEqual(execution.finished_at, expected_finished_at)
 
     def test_identical_mapping_preserves_current_results(self) -> None:
         mapping_input = {
@@ -313,11 +423,20 @@ class ConciliacionRevisionSecurityTests(unittest.TestCase):
                         "La diferencia supera la tolerancia configurada",
                     )
 
-    def test_stale_revision_update_returns_conflict(self) -> None:
+    def test_first_and_second_revision_use_versions_returned_by_get(self) -> None:
         with self.session_factory() as db:
+            first_read = read_results(
+                self.execution_id,
+                None,
+                db,
+                self.owner,
+            )[0]
             first_revision = update_revision(
                 self.result_id,
-                self._revision_payload(observacion="Primera revisión"),
+                self._revision_payload(
+                    expected_updated_at=first_read.updated_at,
+                    observacion="Primera revisión",
+                ),
                 db,
                 self.owner,
             )
@@ -325,26 +444,58 @@ class ConciliacionRevisionSecurityTests(unittest.TestCase):
             self.assertIsNotNone(first_updated_at)
 
         with self.session_factory() as db:
-            with self.assertRaises(HTTPException) as context:
-                update_revision(
-                    self.result_id,
-                    self._revision_payload(observacion="Sobrescritura obsoleta"),
-                    db,
-                    self.owner,
-                )
-            self.assertEqual(context.exception.status_code, 409)
-
-        with self.session_factory() as db:
+            second_read = read_results(
+                self.execution_id,
+                None,
+                db,
+                self.owner,
+            )[0]
+            self.assertEqual(second_read.updated_at, first_updated_at)
             fresh_revision = update_revision(
                 self.result_id,
                 self._revision_payload(
-                    expected_updated_at=first_updated_at,
+                    expected_updated_at=second_read.updated_at,
                     observacion="Segunda revisión vigente",
                 ),
                 db,
                 self.owner,
             )
             self.assertEqual(fresh_revision.observacion, "Segunda revisión vigente")
+            self.assertNotEqual(fresh_revision.updated_at, first_updated_at)
+
+    def test_stale_revision_update_returns_conflict(self) -> None:
+        with self.session_factory() as db:
+            first_read = read_results(
+                self.execution_id,
+                None,
+                db,
+                self.owner,
+            )[0]
+            stale_version = first_read.updated_at
+            first_revision = update_revision(
+                self.result_id,
+                self._revision_payload(
+                    expected_updated_at=stale_version,
+                    observacion="Primera revisión",
+                ),
+                db,
+                self.owner,
+            )
+            self.assertNotEqual(first_revision.updated_at, stale_version)
+
+        with self.session_factory() as db:
+            with self.assertRaises(HTTPException) as context:
+                update_revision(
+                    self.result_id,
+                    self._revision_payload(
+                        expected_updated_at=stale_version,
+                        observacion="Sobrescritura obsoleta",
+                    ),
+                    db,
+                    self.owner,
+                )
+
+        self.assertEqual(context.exception.status_code, 409)
 
 
 if __name__ == "__main__":

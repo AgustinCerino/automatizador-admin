@@ -1,5 +1,5 @@
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select, update
@@ -28,10 +28,16 @@ class ConciliacionRevisionConflictError(ConciliacionRevisionError):
     status_code = 409
 
 
-def get_ejecucion(db: Session, ejecucion_id: int) -> EjecucionProceso:
-    ejecucion = db.execute(
-        select(EjecucionProceso).where(EjecucionProceso.id == ejecucion_id),
-    ).scalar_one_or_none()
+def get_ejecucion(
+    db: Session,
+    ejecucion_id: int,
+    *,
+    lock_for_update: bool = False,
+) -> EjecucionProceso:
+    statement = select(EjecucionProceso).where(EjecucionProceso.id == ejecucion_id)
+    if lock_for_update:
+        statement = statement.with_for_update()
+    ejecucion = db.execute(statement).scalar_one_or_none()
     if ejecucion is None:
         raise ConciliacionRevisionNotFoundError("Ejecución no encontrada")
     return ejecucion
@@ -52,6 +58,8 @@ def get_ejecucion_for_client(
     db: Session,
     ejecucion_id: int,
     cliente_id: int,
+    *,
+    lock_for_update: bool = False,
 ) -> EjecucionProceso:
     try:
         return get_authorized_conciliation_execution(
@@ -59,6 +67,7 @@ def get_ejecucion_for_client(
             ejecucion_id,
             cliente_id,
             conceal_forbidden=True,
+            lock_for_update=lock_for_update,
         )
     except ConciliacionArchivosError as exc:
         if exc.status_code == 404:
@@ -79,6 +88,7 @@ def get_resultado_for_client(
             db,
             resultado.ejecucion_id,
             cliente_id,
+            lock_for_update=True,
         )
     except ConciliacionRevisionNotFoundError as exc:
         raise ConciliacionRevisionNotFoundError("Resultado no encontrado") from exc
@@ -98,6 +108,19 @@ def same_revision_version(
         return value.astimezone(timezone.utc)
 
     return as_utc(current) == as_utc(expected)
+
+
+def next_revision_version(current: datetime | None) -> datetime:
+    now = datetime.now(timezone.utc)
+    if current is None:
+        return now
+
+    current_utc = (
+        current.replace(tzinfo=timezone.utc)
+        if current.tzinfo is None
+        else current.astimezone(timezone.utc)
+    )
+    return max(now, current_utc + timedelta(microseconds=1))
 
 
 def get_resultados_ejecucion(
@@ -136,7 +159,9 @@ def update_resultado_revision(
         exclude={"expected_updated_at"},
         exclude_unset=True,
     )
-    values: dict[str, Any] = {"updated_at": datetime.now(timezone.utc)}
+    values: dict[str, Any] = {
+        "updated_at": next_revision_version(resultado.updated_at),
+    }
     if "observacion" in update_data:
         values["observacion"] = update_data["observacion"]
     if update_data.get("requiere_revision") is not None:
@@ -200,7 +225,7 @@ def get_revision_summary(
 
 
 def approve_execution(db: Session, ejecucion_id: int) -> dict[str, Any]:
-    ejecucion = get_ejecucion(db, ejecucion_id)
+    ejecucion = get_ejecucion(db, ejecucion_id, lock_for_update=True)
     resultados = get_resultados_ejecucion(db, ejecucion_id)
 
     if not resultados:
@@ -225,7 +250,7 @@ def reject_execution(
     motivo: str | None,
     usuario_id: int,
 ) -> dict[str, Any]:
-    ejecucion = get_ejecucion(db, ejecucion_id)
+    ejecucion = get_ejecucion(db, ejecucion_id, lock_for_update=True)
     resultados = get_resultados_ejecucion(db, ejecucion_id)
 
     resumen_json = dict(ejecucion.resumen_json or {})

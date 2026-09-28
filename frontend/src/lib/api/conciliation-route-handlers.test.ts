@@ -381,9 +381,14 @@ describe("BFF de archivos de conciliación", () => {
   it("guarda la revisión con el payload real y recupera su resumen", async () => {
     const result = { clave_referencia: "FAC-1", created_at: "2026-08-21T12:00:00Z", datos_archivo_a_json: { Importe: 120 }, datos_archivo_b_json: { Monto: 100 }, diferencia_importe: "20", ejecucion_id: 31, estado_resultado: "DIFERENCIA_IMPORTE", id: 71, observacion: "Revisado", requiere_revision: false, updated_at: "2026-08-21T12:05:00Z" };
     const dependencies = createDependencies([Response.json(EXECUTION), Response.json(PROCESS), Response.json([result]), Response.json(result)]);
-    const response = await handleUpdateConciliationRevisionRequest(reviewRequest({ observacion: "Revisado", requiere_revision: false }), "31", "71", dependencies);
+    const update = {
+      expected_updated_at: "2026-08-21T12:00:00Z",
+      observacion: "Revisado",
+      requiere_revision: false,
+    };
+    const response = await handleUpdateConciliationRevisionRequest(reviewRequest(update), "31", "71", dependencies);
     expect(response.status).toBe(200);
-    expect(JSON.parse(String(vi.mocked(dependencies.fetchBackend).mock.calls[3][2]?.body))).toEqual({ observacion: "Revisado", requiere_revision: false });
+    expect(JSON.parse(String(vi.mocked(dependencies.fetchBackend).mock.calls[3][2]?.body))).toEqual(update);
     expect(vi.mocked(dependencies.fetchBackend).mock.calls[3][0]).toBe("/conciliaciones/resultados/71/revision");
 
     const summary = { conciliados: 0, diferencias_importe: 1, duplicados_archivo_a: 0, duplicados_archivo_b: 0, ejecucion_id: 31, errores_formato: 0, estado_ejecucion: "REQUIERE_REVISION", pendientes_revision: 1, revisados: 0, solo_archivo_a: 0, solo_archivo_b: 0, total_resultados: 1 };
@@ -398,7 +403,11 @@ describe("BFF de archivos de conciliación", () => {
     ]);
 
     const response = await handleUpdateConciliationRevisionRequest(
-      reviewRequest({ observacion: "No autorizada", requiere_revision: false }),
+      reviewRequest({
+        expected_updated_at: null,
+        observacion: "No autorizada",
+        requiere_revision: false,
+      }),
       "31",
       "71",
       dependencies,
@@ -411,5 +420,61 @@ describe("BFF de archivos de conciliación", () => {
       expect.anything(),
       expect.anything(),
     );
+  });
+
+  it("rechaza una revisión sin la precondición de versión", async () => {
+    const dependencies = createDependencies([]);
+
+    const response = await handleUpdateConciliationRevisionRequest(
+      reviewRequest({ observacion: "Sin versión", requiere_revision: false }),
+      "31",
+      "71",
+      dependencies,
+    );
+
+    expect(response.status).toBe(422);
+    expect(dependencies.fetchBackend).not.toHaveBeenCalled();
+  });
+
+  it("conserva el 409 del backend para una versión obsoleta", async () => {
+    const currentResult = {
+      clave_referencia: "FAC-1",
+      created_at: "2026-08-21T12:00:00Z",
+      datos_archivo_a_json: { Importe: 120 },
+      datos_archivo_b_json: { Monto: 100 },
+      diferencia_importe: "20",
+      ejecucion_id: 31,
+      estado_resultado: "DIFERENCIA_IMPORTE",
+      id: 71,
+      observacion: "Revisado",
+      requiere_revision: false,
+      updated_at: "2026-08-21T12:05:00Z",
+    };
+    const dependencies = createDependencies([
+      Response.json(EXECUTION),
+      Response.json(PROCESS),
+      Response.json([currentResult]),
+      Response.json(
+        { detail: "El resultado fue modificado por otro usuario" },
+        { status: 409 },
+      ),
+    ]);
+
+    const response = await handleUpdateConciliationRevisionRequest(
+      reviewRequest({
+        expected_updated_at: "2026-08-21T12:00:00Z",
+        observacion: "Versión obsoleta",
+        requiere_revision: false,
+      }),
+      "31",
+      "71",
+      dependencies,
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      code: "CONFLICT",
+      message: "La operación no puede realizarse en el estado actual.",
+    });
   });
 });
