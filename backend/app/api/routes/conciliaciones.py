@@ -212,7 +212,11 @@ def export_results(
     current_user: Usuario = Depends(get_current_user),
 ) -> FileResponse:
     try:
-        output_path = export_reconciliation_results(db, ejecucion_id)
+        output_path = export_reconciliation_results(
+            db,
+            ejecucion_id,
+            current_user.cliente_id,
+        )
     except ConciliacionRevisionError as exc:
         raise_revision_http_error(exc)
 
@@ -251,7 +255,7 @@ def approve_reconciliation(
     current_user: Usuario = Depends(require_admin),
 ) -> dict:
     try:
-        return approve_execution(db, ejecucion_id)
+        return approve_execution(db, ejecucion_id, current_user.cliente_id)
     except ConciliacionRevisionError as exc:
         raise_revision_http_error(exc)
 
@@ -272,6 +276,7 @@ def reject_reconciliation(
             ejecucion_id,
             rechazo_in.motivo if rechazo_in is not None else None,
             current_user.id,
+            current_user.cliente_id,
         )
     except ConciliacionRevisionError as exc:
         raise_revision_http_error(exc)

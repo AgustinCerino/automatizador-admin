@@ -10,9 +10,12 @@ import {
   useSaveConciliationSelection,
 } from "@/features/conciliations/api/use-conciliation-files";
 import {
+  useApproveConciliation,
   useConciliationResultsQuery,
   useConciliationRevisionSummaryQuery,
+  useDownloadConciliationExport,
   useExecuteConciliation,
+  useRejectConciliation,
   useUpdateConciliationRevision,
 } from "@/features/conciliations/api/use-conciliation-results";
 import { ConciliationWorkspace } from "@/features/conciliations/components/conciliation-workspace";
@@ -34,9 +37,12 @@ vi.mock("@/features/conciliations/api/use-conciliation-files", () => ({
   useSaveConciliationSelection: vi.fn(),
 }));
 vi.mock("@/features/conciliations/api/use-conciliation-results", () => ({
+  useApproveConciliation: vi.fn(),
   useConciliationResultsQuery: vi.fn(),
   useConciliationRevisionSummaryQuery: vi.fn(),
+  useDownloadConciliationExport: vi.fn(),
   useExecuteConciliation: vi.fn(),
+  useRejectConciliation: vi.fn(),
   useUpdateConciliationRevision: vi.fn(),
 }));
 vi.mock("@/features/conciliations/components/conciliation-mapping-editor", () => ({
@@ -76,6 +82,9 @@ const useResultsMock = vi.mocked(useConciliationResultsQuery);
 const useRevisionSummaryMock = vi.mocked(useConciliationRevisionSummaryQuery);
 const useExecuteMock = vi.mocked(useExecuteConciliation);
 const useUpdateRevisionMock = vi.mocked(useUpdateConciliationRevision);
+const useApproveMock = vi.mocked(useApproveConciliation);
+const useRejectMock = vi.mocked(useRejectConciliation);
+const useExportMock = vi.mocked(useDownloadConciliationExport);
 
 const EXECUTION = {
   created_at: "2026-08-21T12:00:00Z",
@@ -156,6 +165,9 @@ describe("ConciliationWorkspace", () => {
     useResultsMock.mockReturnValue({ data: undefined, isPending: false } as never);
     useRevisionSummaryMock.mockReturnValue({ data: undefined, error: null } as never);
     useUpdateRevisionMock.mockReturnValue({ error: null, isPending: false, mutateAsync: vi.fn() } as never);
+    useApproveMock.mockReturnValue({ error: null, isPending: false, mutateAsync: vi.fn() } as never);
+    useRejectMock.mockReturnValue({ error: null, isPending: false, mutateAsync: vi.fn() } as never);
+    useExportMock.mockReturnValue({ error: null, isPending: false, mutateAsync: vi.fn() } as never);
     useExecuteMock.mockReturnValue({
       data: undefined,
       error: null,
@@ -337,5 +349,71 @@ describe("ConciliationWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Restaurar mapping" }));
     expect(screen.queryByText("Resultado desactualizado")).not.toBeInTheDocument();
     expect(screen.getByText(/Resultado de conciliaci/)).toBeInTheDocument();
+  });
+
+  it("recupera tras F5 un rechazo terminal y deshabilita acciones incompatibles", async () => {
+    useExecutionMock.mockReturnValue({
+      data: {
+        ...EXECUTION,
+        estado: "RECHAZADO",
+        error_message: "Documentación inconsistente",
+        resumen_json: {
+          conciliacion_resumen: {
+            conciliados: 1,
+            diferencias_importe: 1,
+            duplicados_archivo_a: 0,
+            duplicados_archivo_b: 0,
+            ejecucion_id: 31,
+            errores_formato: 0,
+            estado_ejecucion: "REQUIERE_REVISION",
+            requiere_revision: 0,
+            solo_archivo_a: 0,
+            solo_archivo_b: 0,
+            total_resultados: 2,
+          },
+        },
+      },
+      isPending: false,
+    } as never);
+    useMappingMock.mockReturnValue({
+      data: {
+        archivo_a_id: 1,
+        archivo_b_id: 2,
+        columnas_archivo_a: ["Factura", "Importe"],
+        columnas_archivo_b: ["Factura", "Importe"],
+        columna_clave_archivo_a: "Factura",
+        columna_clave_archivo_b: "Factura",
+        columna_importe_archivo_a: "Importe",
+        columna_importe_archivo_b: "Importe",
+        detectar_duplicados: true,
+        tolerancia_importe: 0,
+      },
+      isPending: false,
+    } as never);
+    useRevisionSummaryMock.mockReturnValue({
+      data: {
+        conciliados: 1,
+        diferencias_importe: 1,
+        duplicados_archivo_a: 0,
+        duplicados_archivo_b: 0,
+        ejecucion_id: 31,
+        errores_formato: 0,
+        estado_ejecucion: "RECHAZADO",
+        pendientes_revision: 0,
+        revisados: 2,
+        solo_archivo_a: 0,
+        solo_archivo_b: 0,
+        total_resultados: 2,
+      },
+      error: null,
+    } as never);
+
+    render(<ConciliationWorkspace executionId={31} />);
+
+    expect(await screen.findAllByText("RECHAZADO")).not.toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Aprobar conciliación" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Rechazar conciliación" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Descargar XLSX" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Reejecutar conciliación" })).toBeDisabled();
   });
 });

@@ -25,6 +25,27 @@ def get_ejecucion_or_404(db: Session, ejecucion_id: int) -> EjecucionProceso:
     return ejecucion
 
 
+def get_ejecucion_for_client_or_404(
+    db: Session,
+    ejecucion_id: int,
+    cliente_id: int,
+) -> EjecucionProceso:
+    ejecucion = db.execute(
+        select(EjecucionProceso)
+        .join(Proceso, EjecucionProceso.proceso_id == Proceso.id)
+        .where(
+            EjecucionProceso.id == ejecucion_id,
+            Proceso.cliente_id == cliente_id,
+        ),
+    ).scalar_one_or_none()
+    if ejecucion is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ejecución no encontrada",
+        )
+    return ejecucion
+
+
 def ensure_proceso_exists(db: Session, proceso_id: int) -> None:
     if db.get(Proceso, proceso_id) is None:
         raise HTTPException(
@@ -80,7 +101,11 @@ def read_ejecucion(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ) -> EjecucionProceso:
-    return get_ejecucion_or_404(db, ejecucion_id)
+    return get_ejecucion_for_client_or_404(
+        db,
+        ejecucion_id,
+        current_user.cliente_id,
+    )
 
 
 @router.patch("/{ejecucion_id}", response_model=EjecucionProcesoRead)

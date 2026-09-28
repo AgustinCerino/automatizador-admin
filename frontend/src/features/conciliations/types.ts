@@ -20,3 +20,5 @@ export type ConciliationRevisionUpdate =
   components["schemas"]["ResultadoRevisionUpdate"];
 export type ConciliationRevisionSummary =
   components["schemas"]["RevisionResumenRead"];
+export type RejectConciliationRequest =
+  components["schemas"]["RechazarEjecucionRequest"];

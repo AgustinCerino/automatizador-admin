@@ -11,9 +11,10 @@ from sqlalchemy.orm import Session
 
 from app.models import ResultadoConciliacion
 from app.services.conciliacion_revision_service import (
+    ConciliacionRevisionConflictError,
     ConciliacionRevisionError,
     build_revision_summary,
-    get_ejecucion,
+    get_ejecucion_for_client,
     get_resultados_ejecucion,
 )
 
@@ -113,10 +114,18 @@ def ensure_processed_dir(ejecucion_id: int) -> Path:
     return directory
 
 
-def export_reconciliation_results(db: Session, ejecucion_id: int) -> Path:
-    ejecucion = get_ejecucion(db, ejecucion_id)
+def export_reconciliation_results(
+    db: Session,
+    ejecucion_id: int,
+    cliente_id: int,
+) -> Path:
+    ejecucion = get_ejecucion_for_client(db, ejecucion_id, cliente_id)
     resultados = get_resultados_ejecucion(db, ejecucion_id)
 
+    if ejecucion.estado != "APROBADO":
+        raise ConciliacionRevisionConflictError(
+            "La ejecución debe estar aprobada para exportar",
+        )
     if not resultados:
         raise ConciliacionRevisionError(
             "La ejecución no tiene resultados para exportar",

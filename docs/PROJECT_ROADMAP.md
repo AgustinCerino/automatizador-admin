@@ -66,6 +66,7 @@ No expandir el esquema por defecto. Si una tarea requiere modelos, tablas o rela
 | Tarea 36 — Configuración y persistencia del mapping de Conciliación Excel | Completado | Configuración frontend del mapping de conciliación basada en los archivos A/B persistidos, con guardado, recuperación, dirty state y manejo de cambios de archivos. |
 | Tarea 37 — Ejecución de Conciliación Excel y visualización de resultados | Completado | Ejecución frontend del proceso de conciliación con precondiciones, consulta de resultados, resumen operativo, tabla de resultados y manejo seguro de estados stale. |
 | Tarea 38 — Revisión manual de resultados de Conciliación Excel | Completado | Revisión manual frontend de resultados con comparación A/B, persistencia de estado y observaciones, resumen de progreso y recuperación desde backend tras F5. |
+| Tarea 39 — Aprobación, rechazo y exportación de Conciliación Excel | Completado | Cierre administrativo frontend con confirmaciones, rechazo motivado, recuperación de estados terminales y descarga XLSX mediante BFF; backend endurecido para transiciones, concurrencia y aislamiento multicliente. |
 
 ### Frontend posterior a Tarea 22
 

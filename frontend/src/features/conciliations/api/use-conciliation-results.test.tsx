@@ -3,21 +3,30 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useUpdateConciliationRevision } from "@/features/conciliations/api/use-conciliation-results";
+import {
+  useApproveConciliation,
+  useUpdateConciliationRevision,
+} from "@/features/conciliations/api/use-conciliation-results";
 import { ApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/query/query-keys";
 
 const mocks = vi.hoisted(() => ({
+  approve: vi.fn(),
+  download: vi.fn(),
   execution: vi.fn(),
+  reject: vi.fn(),
   results: vi.fn(),
   revisionSummary: vi.fn(),
   updateRevision: vi.fn(),
 }));
 
 vi.mock("@/features/conciliations/api/conciliation-results-api", () => ({
+  approveConciliation: mocks.approve,
+  downloadConciliationExport: mocks.download,
   executeConciliation: vi.fn(),
   getConciliationRevisionSummary: vi.fn(),
   getConciliationResults: vi.fn(),
+  rejectConciliation: mocks.reject,
   updateConciliationRevision: mocks.updateRevision,
 }));
 
@@ -47,6 +56,9 @@ describe("useUpdateConciliationRevision", () => {
     mocks.results.mockReset().mockResolvedValue([]);
     mocks.revisionSummary.mockReset().mockResolvedValue({ pendientes_revision: 0 });
     mocks.execution.mockReset().mockResolvedValue({ id: 31 });
+    mocks.approve.mockReset().mockResolvedValue({ estado_ejecucion: "APROBADO" });
+    mocks.download.mockReset().mockResolvedValue(undefined);
+    mocks.reject.mockReset().mockResolvedValue({ estado_ejecucion: "RECHAZADO" });
     mocks.updateRevision.mockReset().mockRejectedValue(
       new ApiError(409, {
         code: "CONFLICT",
@@ -85,6 +97,30 @@ describe("useUpdateConciliationRevision", () => {
     });
 
     expect(mocks.updateRevision).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(mocks.results).toHaveBeenCalledTimes(2);
+      expect(mocks.revisionSummary).toHaveBeenCalledTimes(2);
+      expect(mocks.execution).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("reconsulta ejecución, resultados y resumen después de aprobar", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <ActiveQueries>{children}</ActiveQueries>
+      </QueryClientProvider>
+    );
+    const { result } = renderHook(() => useApproveConciliation(31), { wrapper });
+    await waitFor(() => expect(mocks.execution).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await result.current.mutateAsync();
+    });
+
+    expect(mocks.approve).toHaveBeenCalledWith(31);
     await waitFor(() => {
       expect(mocks.results).toHaveBeenCalledTimes(2);
       expect(mocks.revisionSummary).toHaveBeenCalledTimes(2);

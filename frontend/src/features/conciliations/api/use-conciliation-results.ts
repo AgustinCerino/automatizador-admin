@@ -3,9 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  approveConciliation,
+  downloadConciliationExport,
   executeConciliation,
   getConciliationRevisionSummary,
   getConciliationResults,
+  rejectConciliation,
   updateConciliationRevision,
 } from "@/features/conciliations/api/conciliation-results-api";
 import { ApiError } from "@/lib/api/errors";
@@ -77,6 +80,49 @@ export function useUpdateConciliationRevision(executionId: number) {
         queryClient.invalidateQueries({ queryKey: queryKeys.conciliations.revisionSummary(executionId) }),
       ]);
     },
+    retry: false,
+  });
+}
+
+function useClosureInvalidation(executionId: number) {
+  const queryClient = useQueryClient();
+  return async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.conciliations.results(executionId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.conciliations.revisionSummary(executionId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.executions.detail(executionId) }),
+    ]);
+  };
+}
+
+export function useApproveConciliation(executionId: number) {
+  const handleSessionExpired = useSessionExpiredHandler();
+  const invalidate = useClosureInvalidation(executionId);
+  return useMutation({
+    mutationFn: () => approveConciliation(executionId),
+    onError: handleSessionExpired,
+    onSuccess: invalidate,
+    retry: false,
+  });
+}
+
+export function useRejectConciliation(executionId: number) {
+  const handleSessionExpired = useSessionExpiredHandler();
+  const invalidate = useClosureInvalidation(executionId);
+  return useMutation({
+    mutationFn: (motivo: string | null) =>
+      rejectConciliation(executionId, { motivo }),
+    onError: handleSessionExpired,
+    onSuccess: invalidate,
+    retry: false,
+  });
+}
+
+export function useDownloadConciliationExport(executionId: number) {
+  const handleSessionExpired = useSessionExpiredHandler();
+  return useMutation({
+    mutationFn: () => downloadConciliationExport(executionId),
+    onError: handleSessionExpired,
     retry: false,
   });
 }

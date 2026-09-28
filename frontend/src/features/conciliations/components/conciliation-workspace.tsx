@@ -33,11 +33,15 @@ import {
   useSaveConciliationSelection,
 } from "@/features/conciliations/api/use-conciliation-files";
 import {
+  useApproveConciliation,
   useConciliationResultsQuery,
   useConciliationRevisionSummaryQuery,
+  useDownloadConciliationExport,
   useExecuteConciliation,
+  useRejectConciliation,
   useUpdateConciliationRevision,
 } from "@/features/conciliations/api/use-conciliation-results";
+import { ConciliationClosurePanel } from "@/features/conciliations/components/conciliation-closure-panel";
 import { ConciliationMappingEditor } from "@/features/conciliations/components/conciliation-mapping-editor";
 import { ConciliationResultsPanel } from "@/features/conciliations/components/conciliation-results-panel";
 import { ConciliationFileSlot } from "@/features/conciliations/components/conciliation-file-slot";
@@ -143,6 +147,12 @@ function ConciliationWorkspaceContent({
     Boolean(summary) && !stale,
   );
   const updateRevisionMutation = useUpdateConciliationRevision(execution.id);
+  const approveMutation = useApproveConciliation(execution.id);
+  const rejectMutation = useRejectConciliation(execution.id);
+  const exportMutation = useDownloadConciliationExport(execution.id);
+  const currentState = revisionSummaryQuery.data?.estado_ejecucion
+    ?? summary?.estado_ejecucion
+    ?? execution.estado;
 
   async function saveSelection() {
     if (!canSave || draftAId === null || draftBId === null) return;
@@ -344,7 +354,10 @@ function ConciliationWorkspaceContent({
           />
 
           <ConciliationResultsPanel
-            canExecute={configurationReady}
+            canExecute={
+              configurationReady &&
+              !["APROBADO", "RECHAZADO", "CANCELADO"].includes(currentState)
+            }
             configurationMessage={configurationMessage}
             executing={executeMutation.isPending}
             executionError={executeMutation.error}
@@ -367,13 +380,33 @@ function ConciliationWorkspaceContent({
               });
             }}
             reviewAllowed={
-              (revisionSummaryQuery.data?.estado_ejecucion
-                ?? summary?.estado_ejecucion
-                ?? execution.estado) === "REQUIERE_REVISION"
+              currentState === "REQUIERE_REVISION"
             }
             stale={stale}
             summary={summary}
           />
+          {summary ? (
+            <ConciliationClosurePanel
+              approvalError={approveMutation.error}
+              approving={approveMutation.isPending}
+              exportError={exportMutation.error}
+              exporting={exportMutation.isPending}
+              onApprove={async () => {
+                await approveMutation.mutateAsync();
+              }}
+              onExport={async () => {
+                await exportMutation.mutateAsync();
+              }}
+              onReject={async (reason) => {
+                await rejectMutation.mutateAsync(reason);
+              }}
+              pendingReviews={revisionSummaryQuery.data?.pendientes_revision}
+              rejectionError={rejectMutation.error}
+              rejecting={rejectMutation.isPending}
+              stale={stale}
+              state={currentState}
+            />
+          ) : null}
         </>
       ) : null}
     </div>

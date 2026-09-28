@@ -224,10 +224,23 @@ def get_revision_summary(
     return build_revision_summary(ejecucion, resultados)
 
 
-def approve_execution(db: Session, ejecucion_id: int) -> dict[str, Any]:
-    ejecucion = get_ejecucion(db, ejecucion_id, lock_for_update=True)
+def approve_execution(
+    db: Session,
+    ejecucion_id: int,
+    cliente_id: int,
+) -> dict[str, Any]:
+    ejecucion = get_ejecucion_for_client(
+        db,
+        ejecucion_id,
+        cliente_id,
+        lock_for_update=True,
+    )
     resultados = get_resultados_ejecucion(db, ejecucion_id)
 
+    if ejecucion.estado != REVISION_EDITABLE_STATE:
+        raise ConciliacionRevisionConflictError(
+            "La ejecución no admite aprobación en su estado actual",
+        )
     if not resultados:
         raise ConciliacionRevisionError(
             "La ejecución no tiene resultados para aprobar",
@@ -249,9 +262,20 @@ def reject_execution(
     ejecucion_id: int,
     motivo: str | None,
     usuario_id: int,
+    cliente_id: int,
 ) -> dict[str, Any]:
-    ejecucion = get_ejecucion(db, ejecucion_id, lock_for_update=True)
+    ejecucion = get_ejecucion_for_client(
+        db,
+        ejecucion_id,
+        cliente_id,
+        lock_for_update=True,
+    )
     resultados = get_resultados_ejecucion(db, ejecucion_id)
+
+    if ejecucion.estado != REVISION_EDITABLE_STATE:
+        raise ConciliacionRevisionConflictError(
+            "La ejecución no admite rechazo en su estado actual",
+        )
 
     resumen_json = dict(ejecucion.resumen_json or {})
     resumen_json["rechazo"] = {

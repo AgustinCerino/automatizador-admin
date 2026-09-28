@@ -121,6 +121,7 @@ class ConciliacionRevisionConcurrencyIntegrationTests(unittest.TestCase):
                     self.execution_id,
                     "Cierre concurrente",
                     self.user_id,
+                    self.client_id,
                 )
 
         def revise() -> None:
@@ -166,6 +167,101 @@ class ConciliacionRevisionConcurrencyIntegrationTests(unittest.TestCase):
             self.assertEqual(execution.estado, "RECHAZADO")
             self.assertEqual(result.observacion, None)
             self.assertIsNone(result.updated_at)
+
+    def test_approval_serializes_competing_rejection(self) -> None:
+        approval_holds_lock = Event()
+        allow_approval_to_commit = Event()
+        real_get_results = revision_service.get_resultados_ejecucion
+
+        def pause_approval(db: Session, execution_id: int):
+            approval_holds_lock.set()
+            if not allow_approval_to_commit.wait(timeout=5):
+                raise AssertionError("La prueba no liberó la aprobación")
+            return real_get_results(db, execution_id)
+
+        def approve() -> None:
+            with self.session_factory() as db:
+                revision_service.approve_execution(
+                    db,
+                    self.execution_id,
+                    self.client_id,
+                )
+
+        def reject() -> None:
+            with self.session_factory() as db:
+                revision_service.reject_execution(
+                    db,
+                    self.execution_id,
+                    "No debe sobrescribir la aprobación",
+                    self.user_id,
+                    self.client_id,
+                )
+
+        with (
+            patch.object(
+                revision_service,
+                "get_resultados_ejecucion",
+                side_effect=pause_approval,
+            ),
+            ThreadPoolExecutor(max_workers=2) as executor,
+        ):
+            approval_future = executor.submit(approve)
+            self.assertTrue(approval_holds_lock.wait(timeout=5))
+            rejection_future = executor.submit(reject)
+            completed, _ = wait([rejection_future], timeout=0.25)
+            self.assertEqual(completed, set())
+            allow_approval_to_commit.set()
+            approval_future.result(timeout=5)
+            with self.assertRaises(ConciliacionRevisionConflictError):
+                rejection_future.result(timeout=5)
+
+        with self.session_factory() as db:
+            execution = db.get(EjecucionProceso, self.execution_id)
+            self.assertEqual(execution.estado, "APROBADO")
+            self.assertNotIn("rechazo", execution.resumen_json or {})
+
+    def test_double_approval_is_serialized_and_second_attempt_conflicts(self) -> None:
+        first_holds_lock = Event()
+        allow_first_to_commit = Event()
+        real_get_results = revision_service.get_resultados_ejecucion
+
+        def pause_first(db: Session, execution_id: int):
+            first_holds_lock.set()
+            if not allow_first_to_commit.wait(timeout=5):
+                raise AssertionError("La prueba no liberó la primera aprobación")
+            return real_get_results(db, execution_id)
+
+        def approve() -> None:
+            with self.session_factory() as db:
+                revision_service.approve_execution(
+                    db,
+                    self.execution_id,
+                    self.client_id,
+                )
+
+        with (
+            patch.object(
+                revision_service,
+                "get_resultados_ejecucion",
+                side_effect=pause_first,
+            ),
+            ThreadPoolExecutor(max_workers=2) as executor,
+        ):
+            first_future = executor.submit(approve)
+            self.assertTrue(first_holds_lock.wait(timeout=5))
+            second_future = executor.submit(approve)
+            completed, _ = wait([second_future], timeout=0.25)
+            self.assertEqual(completed, set())
+            allow_first_to_commit.set()
+            first_future.result(timeout=5)
+            with self.assertRaises(ConciliacionRevisionConflictError):
+                second_future.result(timeout=5)
+
+        with self.session_factory() as db:
+            self.assertEqual(
+                db.get(EjecucionProceso, self.execution_id).estado,
+                "APROBADO",
+            )
 
 
 if __name__ == "__main__":

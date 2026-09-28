@@ -3,6 +3,7 @@ import type {
   ConciliationFileSelection,
   ConciliationMappingCreate,
   ConciliationResult,
+  RejectConciliationRequest,
 } from "@/features/conciliations/types";
 import {
   parseConciliationFile,
@@ -1433,6 +1434,147 @@ export async function handleUpdateConciliationRevisionRequest(
   if (!result.ok) return result.response;
   const updated = parseConciliationResult(result.value);
   return updated && updated.id === resultId && updated.ejecucion_id === executionId ? jsonResponse(updated) : errorResponse(ERROR_PAYLOADS.internal, 500);
+}
+
+async function handleConciliationDecisionRequest(
+  request: Request,
+  rawExecutionId: string,
+  action: "aprobar" | "rechazar",
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  if (!isSameOriginRequest(request)) {
+    return errorResponse(ERROR_PAYLOADS.invalidOrigin, 403);
+  }
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+
+  let body: RejectConciliationRequest | undefined;
+  if (action === "rechazar") {
+    let value: unknown;
+    try {
+      value = await request.json();
+    } catch {
+      return errorResponse(ERROR_PAYLOADS.invalidRequest, 400);
+    }
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      Array.isArray(value) ||
+      Object.keys(value).some((key) => key !== "motivo")
+    ) {
+      return errorResponse(ERROR_PAYLOADS.validation, 422);
+    }
+    const motivo = (value as Record<string, unknown>).motivo;
+    if (motivo !== undefined && motivo !== null && typeof motivo !== "string") {
+      return errorResponse(ERROR_PAYLOADS.validation, 422);
+    }
+    body = { motivo: motivo ?? null } as RejectConciliationRequest;
+  }
+
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+  const contextResult = await validateConciliationExecution(
+    executionId,
+    sessionResult.value,
+    dependencies,
+  );
+  if (!contextResult.ok) return contextResult.response;
+
+  const result = await callBackend(
+    `/conciliaciones/${executionId}/${action}`,
+    sessionResult.value,
+    dependencies,
+    {
+      body: body ? JSON.stringify(body) : undefined,
+      headers: body
+        ? { Accept: "application/json", "Content-Type": "application/json" }
+        : { Accept: "application/json" },
+      method: "POST",
+    },
+    { 400: ERROR_PAYLOADS.conflict },
+  );
+  if (!result.ok) return result.response;
+  const summary = parseConciliationRevisionSummary(result.value);
+  return summary && summary.ejecucion_id === executionId
+    ? jsonResponse(summary)
+    : errorResponse(ERROR_PAYLOADS.internal, 500);
+}
+
+export function handleApproveConciliationRequest(
+  request: Request,
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  return handleConciliationDecisionRequest(
+    request,
+    rawExecutionId,
+    "aprobar",
+    dependencies,
+  );
+}
+
+export function handleRejectConciliationRequest(
+  request: Request,
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  return handleConciliationDecisionRequest(
+    request,
+    rawExecutionId,
+    "rechazar",
+    dependencies,
+  );
+}
+
+export async function handleExportConciliationRequest(
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+  const contextResult = await validateConciliationExecution(
+    executionId,
+    sessionResult.value,
+    dependencies,
+  );
+  if (!contextResult.ok) return contextResult.response;
+
+  let backendResponse: Response;
+  try {
+    backendResponse = await dependencies.fetchBackend(
+      `/conciliaciones/${executionId}/exportar`,
+      sessionResult.value.token,
+      {
+        headers: {
+          Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        },
+        method: "GET",
+      },
+    );
+  } catch (error) {
+    const unavailable =
+      error instanceof BackendRequestError && error.kind !== "configuration";
+    return errorResponse(
+      unavailable ? ERROR_PAYLOADS.unavailable : ERROR_PAYLOADS.internal,
+      unavailable ? 503 : 500,
+    );
+  }
+  if (!backendResponse.ok) {
+    return normalizeBackendFailure(backendResponse, dependencies);
+  }
+
+  const headers = new Headers(PRIVATE_NO_STORE_HEADERS);
+  for (const header of ["content-type", "content-disposition"]) {
+    const value = backendResponse.headers.get(header);
+    if (value) headers.set(header, value);
+  }
+  headers.set("X-Content-Type-Options", "nosniff");
+  return new Response(backendResponse.body, {
+    headers,
+    status: backendResponse.status,
+  });
 }
 
 export async function handleGetConciliationPreviewRequest(
