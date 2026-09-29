@@ -79,6 +79,18 @@ describe("ConciliationMappingEditor", () => {
     expect(screen.getByRole("button", { name: "Guardar mapping" })).toBeDisabled();
   });
 
+  it("bloquea todos los cambios cuando la ejecución es terminal", () => {
+    renderEditor({ disabled: true });
+
+    expect(screen.getByLabelText("Clave · Archivo A")).toBeDisabled();
+    expect(screen.getByLabelText("Clave · Archivo B")).toBeDisabled();
+    expect(screen.getByLabelText("Importe · Archivo A")).toBeDisabled();
+    expect(screen.getByLabelText("Importe · Archivo B")).toBeDisabled();
+    expect(screen.getByLabelText("Tolerancia de importe")).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Detectar duplicados" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Guardar mapping" })).toBeDisabled();
+  });
+
   it("espera ambos previews antes de validar columnas históricas", () => {
     const props: ComponentProps<typeof ConciliationMappingEditor> = {
       archivoAId: 1,

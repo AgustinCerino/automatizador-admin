@@ -46,6 +46,7 @@ function errorDescription(error: unknown, fallback: string): string {
 }
 
 interface ConciliationFileSlotProps {
+  disabled?: boolean;
   executionId: number;
   files: readonly ConciliationFile[];
   onSelect: (fileId: number | null) => void;
@@ -55,6 +56,7 @@ interface ConciliationFileSlotProps {
 }
 
 export function ConciliationFileSlot({
+  disabled = false,
   executionId,
   files,
   onSelect,
@@ -71,7 +73,7 @@ export function ConciliationFileSlot({
 
   async function submitUpload(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!uploadFile) return;
+    if (disabled || !uploadFile) return;
     try {
       const uploaded = await uploadMutation.mutateAsync(uploadFile);
       setUploadFile(null);
@@ -95,6 +97,7 @@ export function ConciliationFileSlot({
         <div className="space-y-2">
           <Label htmlFor={selectId}>Archivo seleccionado para {role}</Label>
           <Select
+            disabled={disabled}
             onValueChange={(value) =>
               onSelect(value === NO_SELECTION ? null : Number(value))
             }
@@ -127,11 +130,12 @@ export function ConciliationFileSlot({
           <Label htmlFor={inputId}>Cargar archivo para el slot {role}</Label>
           <Input
             accept=".csv,.xls,.xlsx"
+            disabled={disabled}
             id={inputId}
             onChange={(event) => setUploadFile(event.target.files?.item(0) ?? null)}
             type="file"
           />
-          <Button disabled={!uploadFile || uploadMutation.isPending} type="submit" variant="outline">
+          <Button disabled={disabled || !uploadFile || uploadMutation.isPending} type="submit" variant="outline">
             <Upload aria-hidden="true" />
             {uploadMutation.isPending ? "Cargando…" : `Cargar para Archivo ${role}`}
           </Button>

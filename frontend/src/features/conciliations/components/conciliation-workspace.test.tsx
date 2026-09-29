@@ -46,24 +46,26 @@ vi.mock("@/features/conciliations/api/use-conciliation-results", () => ({
   useUpdateConciliationRevision: vi.fn(),
 }));
 vi.mock("@/features/conciliations/components/conciliation-mapping-editor", () => ({
-  ConciliationMappingEditor: ({ onDirtyChange }: {
+  ConciliationMappingEditor: ({ disabled, onDirtyChange }: {
+    disabled?: boolean;
     onDirtyChange: (dirty: boolean) => void;
   }) => (
     <section aria-label="Mapping">
-      <button onClick={() => onDirtyChange(true)} type="button">Modificar mapping</button>
-      <button onClick={() => onDirtyChange(false)} type="button">Restaurar mapping</button>
+      <button disabled={disabled} onClick={() => onDirtyChange(true)} type="button">Modificar mapping</button>
+      <button disabled={disabled} onClick={() => onDirtyChange(false)} type="button">Restaurar mapping</button>
     </section>
   ),
 }));
 vi.mock("@/features/conciliations/components/conciliation-file-slot", () => ({
-  ConciliationFileSlot: ({ onSelect, role, selectedId }: {
+  ConciliationFileSlot: ({ disabled, onSelect, role, selectedId }: {
+    disabled?: boolean;
     onSelect: (id: number) => void;
     role: "A" | "B";
     selectedId: number | null;
   }) => (
     <section aria-label={`Slot ${role}`}>
       <p>{`Seleccionado ${role}: ${selectedId ?? "ninguno"}`}</p>
-      <button onClick={() => onSelect(role === "A" ? 3 : 2)} type="button">
+      <button disabled={disabled} onClick={() => onSelect(role === "A" ? 3 : 2)} type="button">
         {`Cambiar ${role}`}
       </button>
     </section>
@@ -351,7 +353,63 @@ describe("ConciliationWorkspace", () => {
     expect(screen.getByText(/Resultado de conciliaci/)).toBeInTheDocument();
   });
 
-  it("recupera tras F5 un rechazo terminal y deshabilita acciones incompatibles", async () => {
+  it("mantiene APROBADO canónico mientras el resumen está cargando", async () => {
+    useExecutionMock.mockReturnValue({
+      data: {
+        ...EXECUTION,
+        estado: "APROBADO",
+        resumen_json: {
+          conciliacion_resumen: {
+            conciliados: 1,
+            diferencias_importe: 1,
+            duplicados_archivo_a: 0,
+            duplicados_archivo_b: 0,
+            ejecucion_id: 31,
+            errores_formato: 0,
+            estado_ejecucion: "REQUIERE_REVISION",
+            requiere_revision: 0,
+            solo_archivo_a: 0,
+            solo_archivo_b: 0,
+            total_resultados: 2,
+          },
+        },
+      },
+      isPending: false,
+    } as never);
+    useMappingMock.mockReturnValue({
+      data: {
+        archivo_a_id: 1,
+        archivo_b_id: 2,
+        columnas_archivo_a: ["Factura", "Importe"],
+        columnas_archivo_b: ["Factura", "Importe"],
+        columna_clave_archivo_a: "Factura",
+        columna_clave_archivo_b: "Factura",
+        columna_importe_archivo_a: "Importe",
+        columna_importe_archivo_b: "Importe",
+        detectar_duplicados: true,
+        tolerancia_importe: 0,
+      },
+      isPending: false,
+    } as never);
+    useRevisionSummaryMock.mockReturnValue({
+      data: undefined,
+      error: null,
+      isPending: true,
+    } as never);
+
+    render(<ConciliationWorkspace executionId={31} />);
+
+    expect(await screen.findAllByText("APROBADO")).not.toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Aprobar conciliación" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Rechazar conciliación" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Descargar XLSX" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Reejecutar conciliación" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cambiar A" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cambiar B" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Modificar mapping" })).toBeDisabled();
+  });
+
+  it("mantiene RECHAZADO canónico cuando falla el resumen", async () => {
     useExecutionMock.mockReturnValue({
       data: {
         ...EXECUTION,
@@ -391,21 +449,9 @@ describe("ConciliationWorkspace", () => {
       isPending: false,
     } as never);
     useRevisionSummaryMock.mockReturnValue({
-      data: {
-        conciliados: 1,
-        diferencias_importe: 1,
-        duplicados_archivo_a: 0,
-        duplicados_archivo_b: 0,
-        ejecucion_id: 31,
-        errores_formato: 0,
-        estado_ejecucion: "RECHAZADO",
-        pendientes_revision: 0,
-        revisados: 2,
-        solo_archivo_a: 0,
-        solo_archivo_b: 0,
-        total_resultados: 2,
-      },
-      error: null,
+      data: undefined,
+      error: new Error("No disponible"),
+      isPending: false,
     } as never);
 
     render(<ConciliationWorkspace executionId={31} />);
@@ -415,5 +461,8 @@ describe("ConciliationWorkspace", () => {
     expect(screen.getByRole("button", { name: "Rechazar conciliación" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Descargar XLSX" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Reejecutar conciliación" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cambiar A" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cambiar B" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Modificar mapping" })).toBeDisabled();
   });
 });

@@ -56,6 +56,7 @@ interface ConciliationMappingEditorProps {
   columnsA: readonly string[] | null;
   columnsB: readonly string[] | null;
   columnsError: unknown;
+  disabled?: boolean;
   mapping: ConciliationMapping | null;
   mappingError: unknown;
   mappingLoading: boolean;
@@ -75,6 +76,7 @@ export function ConciliationMappingEditor({
   columnsA,
   columnsB,
   columnsError,
+  disabled: externallyDisabled = false,
   mapping,
   mappingError,
   mappingLoading,
@@ -133,8 +135,8 @@ export function ConciliationMappingEditor({
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
   const selectionReady = archivoAId !== null && archivoBId !== null && !mappingSelectionDirty;
-  const canSave = selectionReady && !columnsLoading && !columnsError && complete && !missingColumns && validTolerance && isDirty && !saving;
-  const disabled = !selectionReady || columnsLoading || Boolean(columnsError) || saving;
+  const canSave = !externallyDisabled && selectionReady && !columnsLoading && !columnsError && complete && !missingColumns && validTolerance && isDirty && !saving;
+  const fieldsDisabled = externallyDisabled || !selectionReady || columnsLoading || Boolean(columnsError) || saving;
 
   async function saveMapping() {
     if (!canSave || archivoAId === null || archivoBId === null) return;
@@ -176,14 +178,14 @@ export function ConciliationMappingEditor({
         {columnsError ? <Alert variant="destructive"><AlertCircle aria-hidden="true" /><AlertTitle>No pudimos cargar las columnas</AlertTitle><AlertDescription><p>Reintentá cargar los previews antes de guardar el mapping.</p><Button className="mt-3" onClick={onRetryColumns} type="button" variant="outline">Reintentar previews</Button></AlertDescription></Alert> : null}
         {missingColumns ? <Alert variant="destructive"><AlertCircle aria-hidden="true" /><AlertTitle>Hay columnas que ya no existen</AlertTitle><AlertDescription>Seleccioná una columna válida antes de guardar. No reemplazamos columnas automáticamente.</AlertDescription></Alert> : null}
         <div className="grid gap-4 md:grid-cols-2">
-          <ColumnSelect columns={columnsA ?? []} disabled={disabled} id="conciliation-key-a" label="Clave · Archivo A" onChange={(value) => setDraft((current) => ({ ...current, columna_clave_archivo_a: value }))} showUnavailable={!columnsLoading && !columnsError} value={draft.columna_clave_archivo_a} />
-          <ColumnSelect columns={columnsB ?? []} disabled={disabled} id="conciliation-key-b" label="Clave · Archivo B" onChange={(value) => setDraft((current) => ({ ...current, columna_clave_archivo_b: value }))} showUnavailable={!columnsLoading && !columnsError} value={draft.columna_clave_archivo_b} />
-          <ColumnSelect columns={columnsA ?? []} disabled={disabled} id="conciliation-amount-a" label="Importe · Archivo A" onChange={(value) => setDraft((current) => ({ ...current, columna_importe_archivo_a: value }))} showUnavailable={!columnsLoading && !columnsError} value={draft.columna_importe_archivo_a} />
-          <ColumnSelect columns={columnsB ?? []} disabled={disabled} id="conciliation-amount-b" label="Importe · Archivo B" onChange={(value) => setDraft((current) => ({ ...current, columna_importe_archivo_b: value }))} showUnavailable={!columnsLoading && !columnsError} value={draft.columna_importe_archivo_b} />
+          <ColumnSelect columns={columnsA ?? []} disabled={fieldsDisabled} id="conciliation-key-a" label="Clave · Archivo A" onChange={(value) => setDraft((current) => ({ ...current, columna_clave_archivo_a: value }))} showUnavailable={!columnsLoading && !columnsError} value={draft.columna_clave_archivo_a} />
+          <ColumnSelect columns={columnsB ?? []} disabled={fieldsDisabled} id="conciliation-key-b" label="Clave · Archivo B" onChange={(value) => setDraft((current) => ({ ...current, columna_clave_archivo_b: value }))} showUnavailable={!columnsLoading && !columnsError} value={draft.columna_clave_archivo_b} />
+          <ColumnSelect columns={columnsA ?? []} disabled={fieldsDisabled} id="conciliation-amount-a" label="Importe · Archivo A" onChange={(value) => setDraft((current) => ({ ...current, columna_importe_archivo_a: value }))} showUnavailable={!columnsLoading && !columnsError} value={draft.columna_importe_archivo_a} />
+          <ColumnSelect columns={columnsB ?? []} disabled={fieldsDisabled} id="conciliation-amount-b" label="Importe · Archivo B" onChange={(value) => setDraft((current) => ({ ...current, columna_importe_archivo_b: value }))} showUnavailable={!columnsLoading && !columnsError} value={draft.columna_importe_archivo_b} />
         </div>
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2"><Label htmlFor="conciliation-tolerance">Tolerancia de importe</Label><Input aria-invalid={!validTolerance} disabled={disabled} id="conciliation-tolerance" inputMode="decimal" onChange={(event) => setDraft((current) => ({ ...current, tolerancia_importe: event.target.value }))} type="number" value={draft.tolerancia_importe} /><p className="text-xs text-muted-foreground">Valor numérico; el backend valida la regla final.</p></div>
-          <label className="flex items-center gap-3 self-end rounded-lg border p-3 text-sm"><input checked={draft.detectar_duplicados} disabled={disabled} onChange={(event) => setDraft((current) => ({ ...current, detectar_duplicados: event.target.checked }))} type="checkbox" />Detectar duplicados</label>
+          <div className="space-y-2"><Label htmlFor="conciliation-tolerance">Tolerancia de importe</Label><Input aria-invalid={!validTolerance} disabled={fieldsDisabled} id="conciliation-tolerance" inputMode="decimal" onChange={(event) => setDraft((current) => ({ ...current, tolerancia_importe: event.target.value }))} type="number" value={draft.tolerancia_importe} /><p className="text-xs text-muted-foreground">Valor numérico; el backend valida la regla final.</p></div>
+          <label className="flex items-center gap-3 self-end rounded-lg border p-3 text-sm"><input checked={draft.detectar_duplicados} disabled={fieldsDisabled} onChange={(event) => setDraft((current) => ({ ...current, detectar_duplicados: event.target.checked }))} type="checkbox" />Detectar duplicados</label>
         </div>
         <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-muted-foreground">{isDirty ? "Cambios sin guardar" : "Mapping sincronizado"}</p><Button disabled={!canSave} onClick={() => void saveMapping()} type="button"><Save aria-hidden="true" />{saving ? "Guardando…" : "Guardar mapping"}</Button></div>
         {saveError ? <Alert variant="destructive"><AlertCircle aria-hidden="true" /><AlertTitle>No pudimos guardar el mapping</AlertTitle><AlertDescription>{mappingErrorDescription(saveError)}</AlertDescription></Alert> : null}

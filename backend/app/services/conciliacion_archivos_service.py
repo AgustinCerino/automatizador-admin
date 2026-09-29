@@ -14,6 +14,7 @@ from app.services.file_preview_service import (
 CONCILIACION_ARCHIVOS_KEY = "conciliacion_archivos"
 CONCILIACION_MAPPING_KEY = "conciliacion_mapping"
 CONCILIACION_PROCESS_TYPE = "CONCILIACION_EXCEL"
+TERMINAL_EXECUTION_STATES = {"APROBADO", "RECHAZADO", "CANCELADO"}
 
 
 class ConciliacionArchivosError(Exception):
@@ -26,6 +27,19 @@ class ConciliacionArchivosNotFoundError(ConciliacionArchivosError):
 
 class ConciliacionArchivosAccessDeniedError(ConciliacionArchivosError):
     status_code = 403
+
+
+class ConciliacionArchivosConflictError(ConciliacionArchivosError):
+    status_code = 409
+
+
+def ensure_conciliation_execution_is_editable(
+    ejecucion: EjecucionProceso,
+) -> None:
+    if ejecucion.estado in TERMINAL_EXECUTION_STATES:
+        raise ConciliacionArchivosConflictError(
+            "La ejecución no admite cambios en su estado actual",
+        )
 
 
 def get_authorized_conciliation_execution(
@@ -159,7 +173,9 @@ def save_conciliacion_archivos(
         db,
         ejecucion_id,
         cliente_id,
+        lock_for_update=True,
     )
+    ensure_conciliation_execution_is_editable(ejecucion)
     validate_selection_files(db, ejecucion_id, selection_in)
     selection = selection_in.model_dump()
 

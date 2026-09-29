@@ -213,6 +213,47 @@ class ConciliacionClosureTests(unittest.TestCase):
                         export_results(self.execution_id, db, self.owner)
                 self.assertEqual(context.exception.status_code, 409)
 
+    def test_export_neutralizes_formula_injection_in_multiple_fields(self) -> None:
+        dangerous_values = ("=1+1", "+SUM(A1:A2)", "-1+2", "@SUM(A1:A2)")
+        with self.session_factory() as db:
+            execution = db.get(EjecucionProceso, self.execution_id)
+            execution.estado = "APROBADO"
+            first_result = db.get(ResultadoConciliacion, self.result_id)
+            first_result.clave_referencia = dangerous_values[0]
+            first_result.observacion = dangerous_values[1]
+            db.add(
+                ResultadoConciliacion(
+                    ejecucion_id=self.execution_id,
+                    clave_referencia=dangerous_values[2],
+                    estado_resultado="DIFERENCIA_IMPORTE",
+                    requiere_revision=False,
+                    observacion=dangerous_values[3],
+                ),
+            )
+            db.commit()
+
+        output_root = Path(self.temp_directory.name) / "processed"
+        with self.session_factory() as db, patch(
+            "app.services.conciliacion_export_service.PROCESSED_STORAGE_ROOT",
+            output_root,
+        ):
+            response = export_results(self.execution_id, db, self.owner)
+
+        workbook = load_workbook(response.path, data_only=False)
+        sheet = workbook["Todos"]
+        protected_cells = (
+            (sheet["C2"], dangerous_values[0]),
+            (sheet["G2"], dangerous_values[1]),
+            (sheet["C3"], dangerous_values[2]),
+            (sheet["G3"], dangerous_values[3]),
+        )
+        for cell, original_value in protected_cells:
+            with self.subTest(cell=cell.coordinate):
+                self.assertEqual(cell.value, f"'{original_value}")
+                self.assertEqual(cell.value[1:], original_value)
+                self.assertNotEqual(cell.data_type, "f")
+        workbook.close()
+
 
 if __name__ == "__main__":
     unittest.main()

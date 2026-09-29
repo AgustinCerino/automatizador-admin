@@ -121,6 +121,24 @@ describe("ConciliationFileSlot", () => {
     expect(screen.getByRole("heading", { name: "Preview A" })).toBeInTheDocument();
   });
 
+  it("bloquea selección y carga cuando la ejecución es terminal", () => {
+    render(
+      <ConciliationFileSlot
+        disabled
+        executionId={31}
+        files={FILES}
+        onSelect={vi.fn()}
+        otherSelectedId={2}
+        role="A"
+        selectedId={1}
+      />,
+    );
+
+    expect(screen.getByLabelText("Archivo seleccionado para A")).toBeDisabled();
+    expect(screen.getByLabelText("Cargar archivo para el slot A")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cargar para Archivo A" })).toBeDisabled();
+  });
+
   it("aísla un error de Preview A de un Preview B disponible", () => {
     usePreviewMock.mockImplementation((_executionId, fileId) => (
       fileId === 1

@@ -45,6 +45,9 @@ from app.services.conciliacion_mapping_service import (
 
 
 router = APIRouter(prefix="/conciliaciones", tags=["Conciliaciones"])
+XLSX_MEDIA_TYPE = (
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
 
 
 def raise_mapping_http_error(
@@ -172,8 +175,12 @@ def execute_mapping(
     current_user: Usuario = Depends(get_current_user),
 ) -> dict:
     try:
-        return execute_reconciliation(db, ejecucion_id)
-    except ConciliacionMappingError as exc:
+        return execute_reconciliation(
+            db,
+            ejecucion_id,
+            current_user.cliente_id,
+        )
+    except (ConciliacionMappingError, ConciliacionArchivosError) as exc:
         raise_mapping_http_error(exc)
     except FilePreviewError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -205,7 +212,20 @@ def read_results(
         raise_mapping_http_error(exc)
 
 
-@router.get("/{ejecucion_id}/exportar")
+@router.get(
+    "/{ejecucion_id}/exportar",
+    response_class=FileResponse,
+    responses={
+        200: {
+            "content": {
+                XLSX_MEDIA_TYPE: {
+                    "schema": {"type": "string", "format": "binary"},
+                },
+            },
+            "description": "Archivo XLSX con los resultados de la conciliación",
+        },
+    },
+)
 def export_results(
     ejecucion_id: int,
     db: Session = Depends(get_db),
@@ -223,10 +243,7 @@ def export_results(
     return FileResponse(
         path=output_path,
         filename=output_path.name,
-        media_type=(
-            "application/vnd.openxmlformats-officedocument."
-            "spreadsheetml.sheet"
-        ),
+        media_type=XLSX_MEDIA_TYPE,
     )
 
 

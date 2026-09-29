@@ -10,12 +10,12 @@ import pandas as pd
 from pandas import DataFrame
 
 from app.schemas.transformacion_excel import TransformacionExcelConfig
+from app.services.xlsx_security import protect_formula_injection
 
 
 MIN_COLUMN_WIDTH = 10
 MAX_COLUMN_WIDTH = 60
 DEFAULT_DATE_FORMAT = "yyyy-mm-dd"
-FORMULA_PREFIXES = ("=", "+", "-", "@")
 INVALID_SHEET_NAME_CHARACTERS = set("[]:*?/\\")
 
 
@@ -70,15 +70,6 @@ def build_output_path(output_directory: Path, file_name: str) -> Path:
             "La ruta de salida queda fuera del storage permitido.",
         )
     return candidate
-
-
-def protect_formula_injection(value: Any) -> Any:
-    if not isinstance(value, str):
-        return value
-    stripped = value.lstrip()
-    if stripped.startswith(FORMULA_PREFIXES):
-        return f"'{value}"
-    return value
 
 
 def build_safe_dataframe(

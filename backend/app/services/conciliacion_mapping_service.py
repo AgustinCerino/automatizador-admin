@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models import Archivo, ResultadoConciliacion
 from app.schemas.conciliacion_mapping import ConciliacionMappingCreate
 from app.services.conciliacion_archivos_service import (
+    ensure_conciliation_execution_is_editable,
     get_authorized_conciliation_execution,
     get_explicit_selection,
 )
@@ -83,7 +84,9 @@ def save_conciliacion_mapping(
         db,
         ejecucion_id,
         cliente_id,
+        lock_for_update=True,
     )
+    ensure_conciliation_execution_is_editable(ejecucion)
 
     if mapping_in.archivo_a_id == mapping_in.archivo_b_id:
         raise ConciliacionMappingError("Los archivos A y B deben ser distintos")

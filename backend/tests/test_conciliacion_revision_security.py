@@ -13,8 +13,10 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.routes.conciliaciones import (
     create_or_replace_mapping,
+    execute_mapping,
     read_results,
     read_revision_summary,
+    replace_selected_files,
     update_revision,
 )
 from app.api.routes.auth import get_current_user
@@ -28,6 +30,7 @@ from app.models import (
     ResultadoConciliacion,
     Usuario,
 )
+from app.schemas.conciliacion_archivos import ConciliacionArchivosSelection
 from app.schemas.conciliacion_mapping import ConciliacionMappingCreate
 from app.schemas.resultado_revision import ResultadoRevisionUpdate
 
@@ -279,12 +282,6 @@ class ConciliacionRevisionSecurityTests(unittest.TestCase):
 
         with self.session_factory() as db:
             execution = db.get(EjecucionProceso, self.execution_id)
-            execution.estado = "RECHAZADO"
-            execution.error_message = "Rechazo anterior"
-            execution.resumen_json = {
-                **execution.resumen_json,
-                "rechazo": {"motivo": "Rechazo anterior", "usuario_id": self.owner.id},
-            }
             db.commit()
 
             create_or_replace_mapping(
@@ -328,12 +325,12 @@ class ConciliacionRevisionSecurityTests(unittest.TestCase):
 
         with self.session_factory() as db:
             execution = db.get(EjecucionProceso, self.execution_id)
-            execution.estado = "RECHAZADO"
-            execution.error_message = "Rechazo que debe conservarse"
+            execution.estado = "REQUIERE_REVISION"
+            execution.error_message = "Error previo que debe conservarse"
             execution.resumen_json = {
                 **execution.resumen_json,
                 "rechazo": {
-                    "motivo": "Rechazo que debe conservarse",
+                    "motivo": "Dato previo que debe conservarse",
                     "usuario_id": self.owner.id,
                 },
             }
@@ -364,10 +361,10 @@ class ConciliacionRevisionSecurityTests(unittest.TestCase):
             )
             self.assertEqual(result_count, 1)
             self.assertEqual(execution.resumen_json, expected_summary)
-            self.assertEqual(execution.estado, "RECHAZADO")
+            self.assertEqual(execution.estado, "REQUIERE_REVISION")
             self.assertEqual(
                 execution.error_message,
-                "Rechazo que debe conservarse",
+                "Error previo que debe conservarse",
             )
             self.assertEqual(execution.finished_at, expected_finished_at)
 
@@ -396,6 +393,78 @@ class ConciliacionRevisionSecurityTests(unittest.TestCase):
             self.assertIn("conciliacion_resumen", execution.resumen_json)
             self.assertEqual(execution.estado, "REQUIERE_REVISION")
             self.assertIsNotNone(execution.finished_at)
+
+    def test_terminal_executions_reject_flow_mutations(self) -> None:
+        mapping_input = {
+            key: value
+            for key, value in self.mapping.items()
+            if not key.startswith("columnas_archivo_")
+        }
+        selection = ConciliacionArchivosSelection(
+            archivo_a_id=mapping_input["archivo_a_id"],
+            archivo_b_id=mapping_input["archivo_b_id"],
+        )
+
+        for execution_state in ("APROBADO", "RECHAZADO", "CANCELADO"):
+            with self.subTest(execution_state=execution_state):
+                with self.session_factory() as db:
+                    execution = db.get(EjecucionProceso, self.execution_id)
+                    execution.estado = execution_state
+                    db.commit()
+
+                operations = (
+                    lambda db: replace_selected_files(
+                        self.execution_id,
+                        selection,
+                        db,
+                        self.owner,
+                    ),
+                    lambda db: create_or_replace_mapping(
+                        self.execution_id,
+                        ConciliacionMappingCreate(**mapping_input),
+                        db,
+                        self.owner,
+                    ),
+                    lambda db: execute_mapping(
+                        self.execution_id,
+                        db,
+                        self.owner,
+                    ),
+                )
+                for operation in operations:
+                    with self.session_factory() as db:
+                        with self.assertRaises(HTTPException) as context:
+                            operation(db)
+                    self.assertEqual(context.exception.status_code, 409)
+
+                with self.session_factory() as db:
+                    execution = db.get(EjecucionProceso, self.execution_id)
+                    result_count = db.scalar(
+                        select(func.count(ResultadoConciliacion.id)).where(
+                            ResultadoConciliacion.ejecucion_id
+                            == self.execution_id,
+                        ),
+                    )
+                    self.assertEqual(execution.estado, execution_state)
+                    self.assertEqual(result_count, 1)
+
+    def test_non_terminal_execution_can_run(self) -> None:
+        with self.session_factory() as db:
+            execution = db.get(EjecucionProceso, self.execution_id)
+            execution.estado = "CARGADO"
+            db.commit()
+            summary = execute_mapping(
+                self.execution_id,
+                db,
+                self.owner,
+            )
+
+        self.assertEqual(summary["estado_ejecucion"], "APROBADO")
+        with self.session_factory() as db:
+            self.assertEqual(
+                db.get(EjecucionProceso, self.execution_id).estado,
+                "APROBADO",
+            )
 
     def test_terminal_executions_reject_revision_changes(self) -> None:
         for execution_state in ("APROBADO", "RECHAZADO", "CANCELADO"):

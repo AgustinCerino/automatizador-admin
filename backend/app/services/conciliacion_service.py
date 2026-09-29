@@ -15,6 +15,7 @@ from app.services.conciliacion_mapping_service import (
 )
 from app.services.conciliacion_archivos_service import (
     ConciliacionArchivosError,
+    ensure_conciliation_execution_is_editable,
     get_authorized_conciliation_execution,
 )
 from app.services.file_preview_service import (
@@ -36,15 +37,6 @@ RESULT_STATES = (
     "DUPLICADO_ARCHIVO_B",
     "ERROR_FORMATO",
 )
-
-
-def get_execution(db: Session, ejecucion_id: int) -> EjecucionProceso:
-    ejecucion = db.execute(
-        select(EjecucionProceso).where(EjecucionProceso.id == ejecucion_id),
-    ).scalar_one_or_none()
-    if ejecucion is None:
-        raise ConciliacionResourceNotFoundError("Ejecución no encontrada")
-    return ejecucion
 
 
 def get_mapped_file(db: Session, archivo_id: int, ejecucion_id: int) -> Archivo:
@@ -321,8 +313,19 @@ def build_summary(
     }
 
 
-def execute_reconciliation(db: Session, ejecucion_id: int) -> dict[str, Any]:
-    ejecucion = get_execution(db, ejecucion_id)
+def execute_reconciliation(
+    db: Session,
+    ejecucion_id: int,
+    cliente_id: int,
+) -> dict[str, Any]:
+    ejecucion = get_authorized_conciliation_execution(
+        db,
+        ejecucion_id,
+        cliente_id,
+        conceal_forbidden=True,
+        lock_for_update=True,
+    )
+    ensure_conciliation_execution_is_editable(ejecucion)
     mapping = (ejecucion.resumen_json or {}).get("conciliacion_mapping")
     if mapping is None:
         raise ConciliacionMappingNotFoundError(

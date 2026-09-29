@@ -17,6 +17,7 @@ from app.services.conciliacion_revision_service import (
     get_ejecucion_for_client,
     get_resultados_ejecucion,
 )
+from app.services.xlsx_security import protect_formula_injection
 
 
 PROCESSED_STORAGE_ROOT = Path(__file__).resolve().parents[2] / "storage" / "processed"
@@ -42,10 +43,10 @@ def excel_value(value: Any) -> Any:
     if isinstance(value, Decimal):
         return float(value)
     if isinstance(value, datetime | date):
-        return value.isoformat()
+        value = value.isoformat()
     if isinstance(value, dict | list):
-        return json.dumps(value, ensure_ascii=False, indent=2, default=str)
-    return value
+        value = json.dumps(value, ensure_ascii=False, indent=2, default=str)
+    return protect_formula_injection(value)
 
 
 def resultado_to_row(resultado: ResultadoConciliacion) -> list[Any]:

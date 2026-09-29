@@ -58,6 +58,12 @@ interface DraftOverrides {
   archivoBId?: number | null;
 }
 
+const TERMINAL_EXECUTION_STATES = new Set([
+  "APROBADO",
+  "RECHAZADO",
+  "CANCELADO",
+]);
+
 function errorDescription(error: unknown, fallback: string): string {
   if (!(error instanceof ApiError)) return fallback;
   const messages: Partial<Record<number, string>> = {
@@ -116,7 +122,8 @@ function ConciliationWorkspaceContent({
     draftAId !== null &&
     draftBId !== null &&
     !sameFile &&
-    !saveMutation.isPending;
+    !saveMutation.isPending &&
+    !TERMINAL_EXECUTION_STATES.has(execution.estado);
   const previewAQuery = useConciliationPreviewQuery(execution.id, persistedAId);
   const previewBQuery = useConciliationPreviewQuery(execution.id, persistedBId);
   const mappingMatchesSelection = Boolean(
@@ -150,9 +157,14 @@ function ConciliationWorkspaceContent({
   const approveMutation = useApproveConciliation(execution.id);
   const rejectMutation = useRejectConciliation(execution.id);
   const exportMutation = useDownloadConciliationExport(execution.id);
-  const currentState = revisionSummaryQuery.data?.estado_ejecucion
+  const executionIsTerminal = TERMINAL_EXECUTION_STATES.has(execution.estado);
+  const reportedState = revisionSummaryQuery.data?.estado_ejecucion
     ?? summary?.estado_ejecucion
     ?? execution.estado;
+  const currentState = executionIsTerminal
+    || TERMINAL_EXECUTION_STATES.has(reportedState)
+    ? execution.estado
+    : reportedState;
 
   async function saveSelection() {
     if (!canSave || draftAId === null || draftBId === null) return;
@@ -264,9 +276,11 @@ function ConciliationWorkspaceContent({
 
           <div className="grid min-w-0 gap-4 lg:grid-cols-2">
             <ConciliationFileSlot
+              disabled={executionIsTerminal}
               executionId={execution.id}
               files={filesQuery.data}
               onSelect={(archivoAId) => {
+                if (executionIsTerminal) return;
                 setDraftOverrides((current) => ({ ...current, archivoAId }));
               }}
               otherSelectedId={draftBId}
@@ -274,9 +288,11 @@ function ConciliationWorkspaceContent({
               selectedId={draftAId}
             />
             <ConciliationFileSlot
+              disabled={executionIsTerminal}
               executionId={execution.id}
               files={filesQuery.data}
               onSelect={(archivoBId) => {
+                if (executionIsTerminal) return;
                 setDraftOverrides((current) => ({ ...current, archivoBId }));
               }}
               otherSelectedId={draftAId}
@@ -334,6 +350,7 @@ function ConciliationWorkspaceContent({
             columnsA={previewAQuery.data?.columns ?? null}
             columnsB={previewBQuery.data?.columns ?? null}
             columnsError={previewAQuery.error ?? previewBQuery.error}
+            disabled={executionIsTerminal}
             mapping={mappingQuery.data ?? null}
             mappingError={mappingQuery.error}
             mappingLoading={mappingQuery.isPending}
