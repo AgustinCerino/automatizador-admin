@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,6 +10,8 @@ import {
 import { useTransformationSourceStructureQuery } from "@/features/transformations/api/use-source-files";
 import { TransformationConfigurationBuilder } from "@/features/transformations/components/transformation-configuration-builder";
 import type { TransformationSummary } from "@/features/transformations/types";
+
+const templatePanelState = vi.hoisted(() => ({ props: undefined as unknown }));
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams("sourceFileId=8&sheet=Datos&headerRow=2"),
@@ -27,6 +29,12 @@ vi.mock("@/features/transformations/components/transformation-validation-panel",
 }));
 vi.mock("@/features/transformations/components/transformation-generation-panel", () => ({
   TransformationGenerationPanel: () => null,
+}));
+vi.mock("@/features/transformations/components/transformation-templates-panel", () => ({
+  TransformationTemplatesPanel: (props: unknown) => {
+    templatePanelState.props = props;
+    return null;
+  },
 }));
 
 const configurationQueryMock = vi.mocked(useTransformationConfigurationQuery);
@@ -157,6 +165,22 @@ describe("TransformationConfigurationBuilder", { timeout: 15_000 }, () => {
     rerender(<TransformationConfigurationBuilder summary={{ ...SUMMARY, has_configuration: true }} />);
 
     expect(screen.getByLabelText("Nombre de salida")).toHaveValue("Estado local");
+  });
+
+  it("reemplaza el draft completo con la configuración aplicada por una plantilla", async () => {
+    render(<TransformationConfigurationBuilder summary={SUMMARY} />);
+    const props = templatePanelState.props as {
+      onApplied: (value: unknown) => void;
+    };
+    act(() => props.onApplied({
+      configuracion: {
+        output_columns: [{ operation: "CONSTANT", output_column: "Desde plantilla", value: "OK" }],
+        rows: { filters: [], remove_duplicates: { by_output_columns: [], enabled: false, keep: "FIRST" }, sort_by: [] },
+        source: { archivo_id: 8, header_row: 2, sheet_name: "Datos" },
+      },
+    }));
+    await waitFor(() => expect(screen.getByLabelText("Nombre de salida")).toHaveValue("Desde plantilla"));
+    expect(screen.getByLabelText("Valor constante")).toHaveValue("OK");
   });
 
   it("serializes CONCAT parts", async () => {

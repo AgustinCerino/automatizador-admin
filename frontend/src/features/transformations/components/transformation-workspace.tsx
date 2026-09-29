@@ -23,6 +23,7 @@ import { TransformationConfigurationBuilder } from "@/features/transformations/c
 import { ApiError } from "@/lib/api/errors";
 
 interface TransformationWorkspaceProps {
+  canManageTemplates?: boolean;
   executionId: number;
 }
 
@@ -41,7 +42,7 @@ function getErrorDescription(error: unknown): string {
   return descriptions[error.status] ?? "No pudimos cargar la información de la ejecución.";
 }
 
-export function TransformationWorkspace({ executionId }: TransformationWorkspaceProps) {
+export function TransformationWorkspace({ canManageTemplates = false, executionId }: TransformationWorkspaceProps) {
   const summaryQuery = useTransformationSummaryQuery(executionId);
 
   if (summaryQuery.isPending) {
@@ -95,7 +96,7 @@ export function TransformationWorkspace({ executionId }: TransformationWorkspace
         <SourceFilePanel summary={summary} />
       </Suspense>
 
-      <TransformationConfigurationBuilder summary={summary} />
+      <TransformationConfigurationBuilder canManageTemplates={canManageTemplates} summary={summary} />
 
       <div className="grid gap-4 md:grid-cols-2">
         <ConfigurationSummaryCard summary={summary} />

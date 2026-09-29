@@ -33,6 +33,16 @@ export type TransformationGenerationRead =
   components["schemas"]["TransformacionExcelGenerationRead"];
 export type TransformationValidationIssue =
   components["schemas"]["TransformacionExcelValidationIssueRead"];
+export type TransformationTemplateRead =
+  components["schemas"]["TransformacionExcelTemplateRead"];
+export type TransformationTemplateListRead =
+  components["schemas"]["TransformacionExcelTemplateListRead"];
+export type TransformationTemplateCreate =
+  components["schemas"]["TransformacionExcelTemplateCreate"];
+export type TransformationTemplateUpdate =
+  components["schemas"]["TransformacionExcelTemplateUpdate"];
+export type TransformationTemplateApply =
+  components["schemas"]["TransformacionExcelTemplateApply"];
 
 export interface TransformationCapabilities {
   canDownload: boolean;

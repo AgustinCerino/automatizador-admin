@@ -5,6 +5,11 @@ import type {
   ConciliationResult,
   RejectConciliationRequest,
 } from "@/features/conciliations/types";
+import type {
+  TransformationTemplateApply,
+  TransformationTemplateCreate,
+  TransformationTemplateUpdate,
+} from "@/features/transformations/types";
 import {
   parseConciliationFile,
   parseConciliationFileList,
@@ -23,6 +28,8 @@ import {
   parseTransformationSourceFile,
   parseTransformationSourceFileList,
   parseTransformationSourceStructure,
+  parseTransformationTemplate,
+  parseTransformationTemplateList,
 } from "@/lib/api/backend-contracts";
 import {
   BackendRequestError,
@@ -140,6 +147,10 @@ const ERROR_PAYLOADS = {
   invalidInspection: {
     code: "INVALID_SOURCE_INSPECTION",
     message: "No se pudo inspeccionar el archivo con esos parámetros.",
+  },
+  invalidTemplate: {
+    code: "INVALID_TRANSFORMATION_TEMPLATE",
+    message: "La plantilla no es válida o no está disponible.",
   },
   unavailable: {
     code: "BACKEND_UNAVAILABLE",
@@ -728,6 +739,229 @@ export async function handleGetTransformationResultRequest(
     { 400: ERROR_PAYLOADS.incompatibleTransformation },
   );
   return result.ok ? jsonResponse(result.value) : result.response;
+}
+
+function parseTemplateCreate(value: unknown): TransformationTemplateCreate | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).some((key) => key !== "nombre" && key !== "descripcion")) return undefined;
+  if (typeof record.nombre !== "string" || record.nombre.trim().length === 0 || record.nombre.length > 150) return undefined;
+  if (record.descripcion !== undefined && record.descripcion !== null && typeof record.descripcion !== "string") return undefined;
+  return {
+    nombre: record.nombre.trim(),
+    ...(record.descripcion !== undefined
+      ? { descripcion: typeof record.descripcion === "string" ? record.descripcion.trim() || null : null }
+      : {}),
+  };
+}
+
+function parseTemplateUpdate(value: unknown): TransformationTemplateUpdate | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+  if (!keys.length || keys.some((key) => key !== "nombre" && key !== "descripcion")) return undefined;
+  if (record.nombre !== undefined && (typeof record.nombre !== "string" || record.nombre.trim().length === 0 || record.nombre.length > 150)) return undefined;
+  if (record.descripcion !== undefined && record.descripcion !== null && typeof record.descripcion !== "string") return undefined;
+  return {
+    ...(typeof record.nombre === "string" ? { nombre: record.nombre.trim() } : {}),
+    ...(record.descripcion !== undefined
+      ? { descripcion: typeof record.descripcion === "string" ? record.descripcion.trim() || null : null }
+      : {}),
+  };
+}
+
+function parseTemplateApply(value: unknown): TransformationTemplateApply | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).some((key) => !["archivo_id", "sheet_name", "header_row"].includes(key))) return undefined;
+  if (typeof record.archivo_id !== "number" || !Number.isSafeInteger(record.archivo_id) || record.archivo_id <= 0) return undefined;
+  if (record.sheet_name !== undefined && record.sheet_name !== null && typeof record.sheet_name !== "string") return undefined;
+  if (record.header_row !== undefined && record.header_row !== null && (typeof record.header_row !== "number" || !Number.isSafeInteger(record.header_row) || record.header_row <= 0)) return undefined;
+  return {
+    archivo_id: record.archivo_id,
+    ...(record.sheet_name !== undefined ? { sheet_name: record.sheet_name as string | null } : {}),
+    ...(record.header_row !== undefined ? { header_row: record.header_row as number | null } : {}),
+  };
+}
+
+function getTransformationProcessId(value: unknown, executionId: number): number | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  return record.ejecucion_id === executionId &&
+    typeof record.proceso_id === "number" && Number.isSafeInteger(record.proceso_id) && record.proceso_id > 0
+    ? record.proceso_id
+    : undefined;
+}
+
+async function getTemplateContext(
+  executionId: number,
+  templateId: number,
+  session: AuthenticatedSession,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<HandlerResult<{ processId: number }>> {
+  const context = await validateTransformationExecution(executionId, session, dependencies);
+  if (!context.ok) return context;
+  const processId = getTransformationProcessId(context.value, executionId);
+  if (!processId) return { ok: false, response: errorResponse(ERROR_PAYLOADS.internal, 500) };
+
+  const templateResult = await callBackend(
+    `/transformaciones-excel/plantillas/${templateId}`,
+    session,
+    dependencies,
+    { headers: { Accept: "application/json" }, method: "GET" },
+    { 400: ERROR_PAYLOADS.invalidTemplate },
+  );
+  if (!templateResult.ok) return templateResult;
+  const template = parseTransformationTemplate(templateResult.value);
+  if (!template || template.proceso_id !== processId) {
+    return { ok: false, response: errorResponse(ERROR_PAYLOADS.notFound, 404) };
+  }
+  return { ok: true, value: { processId } };
+}
+
+export async function handleListTransformationTemplatesRequest(
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+  const context = await validateTransformationExecution(executionId, sessionResult.value, dependencies);
+  if (!context.ok) return context.response;
+  const processId = getTransformationProcessId(context.value, executionId);
+  if (!processId) return errorResponse(ERROR_PAYLOADS.internal, 500);
+  const result = await callBackend(
+    `/transformaciones-excel/procesos/${processId}/plantillas`,
+    sessionResult.value,
+    dependencies,
+    { headers: { Accept: "application/json" }, method: "GET" },
+    { 400: ERROR_PAYLOADS.invalidTemplate },
+  );
+  if (!result.ok) return result.response;
+  const templates = parseTransformationTemplateList(result.value);
+  if (!templates || templates.items.some((item) => item.proceso_id !== processId || !item.activo)) {
+    return errorResponse(ERROR_PAYLOADS.internal, 500);
+  }
+  return jsonResponse(templates);
+}
+
+export async function handleCreateTransformationTemplateRequest(
+  request: Request,
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  if (!isSameOriginRequest(request)) return errorResponse(ERROR_PAYLOADS.invalidOrigin, 403);
+  const executionId = parsePositiveInteger(rawExecutionId);
+  if (!executionId) return invalidIdentifierResponse();
+  let raw: unknown;
+  try { raw = await request.json(); } catch { return errorResponse(ERROR_PAYLOADS.invalidRequest, 400); }
+  const input = parseTemplateCreate(raw);
+  if (!input) return errorResponse(ERROR_PAYLOADS.validation, 422);
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+  if (sessionResult.value.user.rol !== "ADMIN") return errorResponse(ERROR_PAYLOADS.forbidden, 403);
+  const context = await validateTransformationExecution(executionId, sessionResult.value, dependencies);
+  if (!context.ok) return context.response;
+  const processId = getTransformationProcessId(context.value, executionId);
+  if (!processId) return errorResponse(ERROR_PAYLOADS.internal, 500);
+  const result = await callBackend(
+    `/transformaciones-excel/${executionId}/plantillas`, sessionResult.value, dependencies,
+    { body: JSON.stringify(input), headers: { Accept: "application/json", "Content-Type": "application/json" }, method: "POST" },
+    { 400: ERROR_PAYLOADS.invalidTemplate },
+  );
+  if (!result.ok) return result.response;
+  const template = parseTransformationTemplate(result.value);
+  return template && template.proceso_id === processId ? jsonResponse(template, 201) : errorResponse(ERROR_PAYLOADS.internal, 500);
+}
+
+export async function handleApplyTransformationTemplateRequest(
+  request: Request,
+  rawExecutionId: string,
+  rawTemplateId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  if (!isSameOriginRequest(request)) return errorResponse(ERROR_PAYLOADS.invalidOrigin, 403);
+  const executionId = parsePositiveInteger(rawExecutionId);
+  const templateId = parsePositiveInteger(rawTemplateId);
+  if (!executionId || !templateId) return invalidIdentifierResponse();
+  let raw: unknown;
+  try { raw = await request.json(); } catch { return errorResponse(ERROR_PAYLOADS.invalidRequest, 400); }
+  const input = parseTemplateApply(raw);
+  if (!input) return errorResponse(ERROR_PAYLOADS.validation, 422);
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+  const context = await getTemplateContext(executionId, templateId, sessionResult.value, dependencies);
+  if (!context.ok) return context.response;
+  const result = await callBackend(
+    `/transformaciones-excel/${executionId}/plantillas/${templateId}/aplicar`, sessionResult.value, dependencies,
+    { body: JSON.stringify(input), headers: { Accept: "application/json", "Content-Type": "application/json" }, method: "POST" },
+    { 400: ERROR_PAYLOADS.invalidTemplate },
+  );
+  if (!result.ok) return result.response;
+  const value = result.value as { ejecucion_id?: unknown };
+  return value?.ejecucion_id === executionId ? jsonResponse(result.value) : errorResponse(ERROR_PAYLOADS.internal, 500);
+}
+
+export async function handleUpdateTransformationTemplateRequest(
+  request: Request,
+  rawExecutionId: string,
+  rawTemplateId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  if (!isSameOriginRequest(request)) return errorResponse(ERROR_PAYLOADS.invalidOrigin, 403);
+  const executionId = parsePositiveInteger(rawExecutionId);
+  const templateId = parsePositiveInteger(rawTemplateId);
+  if (!executionId || !templateId) return invalidIdentifierResponse();
+  let raw: unknown;
+  try { raw = await request.json(); } catch { return errorResponse(ERROR_PAYLOADS.invalidRequest, 400); }
+  const input = parseTemplateUpdate(raw);
+  if (!input) return errorResponse(ERROR_PAYLOADS.validation, 422);
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+  if (sessionResult.value.user.rol !== "ADMIN") return errorResponse(ERROR_PAYLOADS.forbidden, 403);
+  const context = await getTemplateContext(executionId, templateId, sessionResult.value, dependencies);
+  if (!context.ok) return context.response;
+  const result = await callBackend(
+    `/transformaciones-excel/plantillas/${templateId}`, sessionResult.value, dependencies,
+    { body: JSON.stringify(input), headers: { Accept: "application/json", "Content-Type": "application/json" }, method: "PUT" },
+    { 400: ERROR_PAYLOADS.invalidTemplate },
+  );
+  if (!result.ok) return result.response;
+  const template = parseTransformationTemplate(result.value);
+  return template && template.id === templateId && template.proceso_id === context.value.processId
+    ? jsonResponse(template)
+    : errorResponse(ERROR_PAYLOADS.internal, 500);
+}
+
+export async function handleDeactivateTransformationTemplateRequest(
+  request: Request,
+  rawExecutionId: string,
+  rawTemplateId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  if (!isSameOriginRequest(request)) return errorResponse(ERROR_PAYLOADS.invalidOrigin, 403);
+  const executionId = parsePositiveInteger(rawExecutionId);
+  const templateId = parsePositiveInteger(rawTemplateId);
+  if (!executionId || !templateId) return invalidIdentifierResponse();
+  const sessionResult = await resolveSession(dependencies);
+  if (!sessionResult.ok) return sessionResult.response;
+  if (sessionResult.value.user.rol !== "ADMIN") return errorResponse(ERROR_PAYLOADS.forbidden, 403);
+  const context = await getTemplateContext(executionId, templateId, sessionResult.value, dependencies);
+  if (!context.ok) return context.response;
+  let response: Response;
+  try {
+    response = await dependencies.fetchBackend(
+      `/transformaciones-excel/plantillas/${templateId}`,
+      sessionResult.value.token,
+      { headers: { Accept: "application/json" }, method: "DELETE" },
+    );
+  } catch (error) {
+    const unavailable = error instanceof BackendRequestError && error.kind !== "configuration";
+    return errorResponse(unavailable ? ERROR_PAYLOADS.unavailable : ERROR_PAYLOADS.internal, unavailable ? 503 : 500);
+  }
+  if (!response.ok) return normalizeBackendFailure(response, dependencies, { 400: ERROR_PAYLOADS.invalidTemplate });
+  return new Response(null, { headers: PRIVATE_NO_STORE_HEADERS, status: 204 });
 }
 
 export async function handleDownloadTransformationResultRequest(

@@ -67,6 +67,7 @@ No expandir el esquema por defecto. Si una tarea requiere modelos, tablas o rela
 | Tarea 37 — Ejecución de Conciliación Excel y visualización de resultados | Completado | Ejecución frontend del proceso de conciliación con precondiciones, consulta de resultados, resumen operativo, tabla de resultados y manejo seguro de estados stale. |
 | Tarea 38 — Revisión manual de resultados de Conciliación Excel | Completado | Revisión manual frontend de resultados con comparación A/B, persistencia de estado y observaciones, resumen de progreso y recuperación desde backend tras F5. |
 | Tarea 39 — Aprobación, rechazo y exportación de Conciliación Excel | Completado | Cierre administrativo frontend con confirmaciones, rechazo motivado, recuperación de estados terminales y descarga XLSX mediante BFF; backend endurecido para transiciones, concurrencia y aislamiento multicliente. |
+| Tarea 40 — Plantillas reutilizables de Transformación Excel en frontend | Completado | Listado por proceso, creación desde la configuración persistida, aplicación confirmada sin ejecución automática, edición de metadata y desactivación lógica mediante los contratos backend existentes. |
 
 ### Frontend posterior a Tarea 22
 

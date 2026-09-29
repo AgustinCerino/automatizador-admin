@@ -14,6 +14,8 @@ import type {
 import type {
   TransformationSourceFile,
   TransformationSourceStructure,
+  TransformationTemplateListRead,
+  TransformationTemplateRead,
 } from "@/features/transformations/types";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -154,6 +156,40 @@ export function parseTransformationSourceFileList(
   if (!Array.isArray(value)) return undefined;
   const files = value.map(parseTransformationSourceFile);
   return files.every((file) => file !== undefined) ? files : undefined;
+}
+
+export function parseTransformationTemplate(
+  value: unknown,
+): TransformationTemplateRead | undefined {
+  if (
+    !isRecord(value) ||
+    !isPositiveInteger(value.id) ||
+    !isPositiveInteger(value.proceso_id) ||
+    typeof value.nombre !== "string" ||
+    !isNullableString(value.descripcion) ||
+    typeof value.activo !== "boolean" ||
+    !isRecord(value.configuracion) ||
+    !isPositiveInteger(value.schema_version) ||
+    !isNullableString(value.created_at) ||
+    !isNullableString(value.updated_at)
+  ) {
+    return undefined;
+  }
+
+  return value as TransformationTemplateRead;
+}
+
+export function parseTransformationTemplateList(
+  value: unknown,
+): TransformationTemplateListRead | undefined {
+  if (!isRecord(value) || !Array.isArray(value.items) || !isNonNegativeInteger(value.total)) {
+    return undefined;
+  }
+  const items = value.items.map(parseTransformationTemplate);
+  if (items.some((item) => item === undefined) || value.total !== items.length) {
+    return undefined;
+  }
+  return { items: items as TransformationTemplateRead[], total: value.total };
 }
 
 export function parseConciliationFile(

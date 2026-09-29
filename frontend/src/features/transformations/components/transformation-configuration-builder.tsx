@@ -15,6 +15,7 @@ import { useTransformationSourceStructureQuery } from "@/features/transformation
 import { EMPTY_ROWS, type DraftRows, RowRulesEditor } from "@/features/transformations/components/row-rules-editor";
 import { TransformationValidationPanel } from "@/features/transformations/components/transformation-validation-panel";
 import { TransformationGenerationPanel } from "@/features/transformations/components/transformation-generation-panel";
+import { TransformationTemplatesPanel } from "@/features/transformations/components/transformation-templates-panel";
 import { readTransformationSourceDraft, resolveTransformationSourceDraft } from "@/features/transformations/source-draft";
 import type { TransformationExcelConfig, TransformationSummary, TransformationValidationRead } from "@/features/transformations/types";
 import { ApiError } from "@/lib/api/errors";
@@ -116,7 +117,7 @@ function validRows(rows: DraftRows, sourceColumns: string[], outputColumns: stri
   return validFilters && validDuplicates && validSort;
 }
 
-export function TransformationConfigurationBuilder({ summary }: { summary: TransformationSummary }) {
+export function TransformationConfigurationBuilder({ canManageTemplates = false, summary }: { canManageTemplates?: boolean; summary: TransformationSummary }) {
   const searchParams = useSearchParams();
   const sourceDraft = useMemo(() => resolveTransformationSourceDraft(summary, readTransformationSourceDraft(searchParams ?? new URLSearchParams())), [searchParams, summary]);
   const configurationQuery = useTransformationConfigurationQuery(summary.ejecucion_id, summary.has_configuration);
@@ -190,7 +191,18 @@ export function TransformationConfigurationBuilder({ summary }: { summary: Trans
     try { setValidationResult(await validateMutation.mutateAsync()); } catch { /* rendered below */ }
   }
 
-  return <Card><CardHeader><CardTitle><h2>Columnas de salida</h2></CardTitle><CardDescription>DefinÃ­ las columnas del archivo resultante a partir de la fuente inspeccionada.</CardDescription></CardHeader><CardContent className="space-y-5">
+  function applyTemplateConfiguration(configurationRead: { configuracion: TransformationExcelConfig }) {
+    const nextColumns = draftColumnsFromConfiguration(configurationRead.configuracion);
+    hasInitializedConfiguration.current = true;
+    setColumns(nextColumns);
+    setRows(draftRowsFromConfiguration(configurationRead.configuracion));
+    setNextId(nextColumns.length + 1);
+    setIsDirty(false);
+    setValidationMessage(null);
+    setValidationResult(null);
+  }
+
+  return <><TransformationTemplatesPanel canManage={canManageTemplates} hasLocalChanges={isDraftDirty} onApplied={applyTemplateConfiguration} source={{ fileId: sourceDraft.sourceFileId, headerRow: sourceDraft.headerRow, sheet: sourceDraft.sheet }} summary={summary} /><Card><CardHeader><CardTitle><h2>Columnas de salida</h2></CardTitle><CardDescription>DefinÃ­ las columnas del archivo resultante a partir de la fuente inspeccionada.</CardDescription></CardHeader><CardContent className="space-y-5">
     {configurationQuery.isPending && summary.has_configuration ? <p className="text-sm text-muted-foreground">Cargando configuraciÃ³n guardadaâ€¦</p> : null}
     {configurationQuery.isError ? <Alert variant="destructive"><AlertCircle aria-hidden="true" /><AlertTitle>No pudimos cargar la configuraciÃ³n</AlertTitle><AlertDescription>La configuraciÃ³n existente no se modificarÃ¡ desde esta pantalla.</AlertDescription></Alert> : null}
     {!sourceDraft.sourceFileId ? <Alert><AlertCircle aria-hidden="true" /><AlertTitle>Falta un archivo fuente</AlertTitle><AlertDescription>SeleccionÃ¡ e inspeccionÃ¡ un archivo antes de configurar las columnas.</AlertDescription></Alert> : null}
@@ -215,7 +227,7 @@ export function TransformationConfigurationBuilder({ summary }: { summary: Trans
     <div className="flex flex-wrap gap-3"><Button disabled={!canEdit} onClick={() => { setColumns((current) => [...current, emptyColumn(nextId)]); setNextId((current) => current + 1); markDirty(); }} type="button" variant="outline"><Plus aria-hidden="true" />Agregar columna</Button><Button disabled={!canEdit || saveMutation.isPending || !sourceColumns.length} onClick={() => void save()} type="button"><Save aria-hidden="true" />{saveMutation.isPending ? "Guardandoâ€¦" : "Guardar configuraciÃ³n"}</Button></div>
     <TransformationValidationPanel errorMessage={validateMutation.isError ? getValidationErrorMessage(validateMutation.error) : null} isDirty={isDraftDirty} isPending={validateMutation.isPending} isSaved={summary.has_configuration || saveMutation.isSuccess} onValidate={() => void validate()} result={validationResult} />
     <TransformationGenerationPanel isDirty={isDraftDirty} summary={summary} validationIsValid={Boolean(validationResult?.valid)} />
-  </CardContent></Card>;
+  </CardContent></Card></>;
 }
 
 function SourceSelect({ column, disabled, onChange, sourceColumns }: { column: DraftColumn; disabled: boolean; onChange: (value: string) => void; sourceColumns: string[] }) { return <div className="space-y-2"><Label>Columna de origen</Label><Select disabled={disabled} onValueChange={onChange} value={column.sourceColumn || undefined}><SelectTrigger aria-label="Columna de origen"><SelectValue placeholder="SeleccionÃ¡ una columna inspeccionada" /></SelectTrigger><SelectContent>{sourceColumns.map((sourceColumn) => <SelectItem key={sourceColumn} value={sourceColumn}>{sourceColumn}</SelectItem>)}</SelectContent></Select></div>; }
