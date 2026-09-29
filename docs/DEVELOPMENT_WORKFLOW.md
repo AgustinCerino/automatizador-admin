@@ -34,9 +34,17 @@ Para consultar la sesión y usar Route Handlers protegidos, Next.js lee la cooki
 
 ## Antes y durante una tarea
 
-Leer los `AGENTS.md` aplicables y las secciones relevantes de `PROJECT_HANDOFF.md` y `PROJECT_ROADMAP.md`. El código involucrado determina el comportamiento implementado; señalar cualquier discrepancia con los documentos.
+Leer los `AGENTS.md` aplicables y únicamente las secciones relevantes de `PROJECT_HANDOFF.md` y `PROJECT_ROADMAP.md`. Inspeccionar sólo los archivos afectados, sus dependencias directas y los contratos relacionados; ampliar la búsqueda únicamente cuando aparezca una dependencia real. El código involucrado determina el comportamiento implementado; señalar cualquier discrepancia con los documentos.
 
 Para tareas no triviales: inspeccionar los archivos y patrones relacionados, presentar un plan breve, implementar el cambio mínimo, validar y revisar el diff. Actualizar el handoff sólo por cambios técnicos relevantes y el roadmap sólo por cambios de planificación o estado de tareas.
+
+Los prompts futuros deben ser breves y basarse en las reglas persistentes de los `AGENTS.md`, sin repetir arquitectura, stack ni instrucciones ya documentadas.
+
+## Uso de Codex
+
+Codex en VS Code se utiliza para inspección de código, implementación, tests focalizados, lint, typecheck, build, análisis de `git diff` y revisión técnica de seguridad, contratos, backend, frontend y base de datos. Por defecto no usa navegador, Computer Use ni realiza validaciones visuales. Si una tarea requiere navegación real o validación visual, se informa como pendiente para Codex Desktop.
+
+Codex Desktop se utiliza para navegar sobre `localhost`, validación visual y responsive, UX, interacción real con formularios, F5, browser back/forward, descargas visuales, Computer Use, inspección visual de estados loading/error y pruebas manuales de flujos. Las pruebas realizadas en Desktop no se repiten desde VS Code salvo que exista un motivo técnico concreto.
 
 ## Validación general
 
@@ -53,13 +61,13 @@ Para cambios únicamente backend o frontend, limitar los checks al componente af
 .\scripts\validate.ps1 -Frontend
 ```
 
-Antes de cerrar una tarea, ejecutar siempre la validación completa, incluido el build de Next.js:
+Cuando la tarea esté estable y antes del cierre, ejecutar una vez la validación completa, incluido el build de Next.js:
 
 ```powershell
 .\scripts\validate.ps1
 ```
 
-El modo `-Quick` no reemplaza la validación completa de cierre. `-Quick`, `-Backend` y `-Frontend` son mutuamente excluyentes.
+El modo `-Quick` no reemplaza la validación completa de cierre. `-Quick`, `-Backend` y `-Frontend` son mutuamente excluyentes. No repetir FULL después de una revisión que no haya modificado archivos. Si después del FULL sólo cambia documentación, no repetir tests funcionales salvo que exista una razón concreta. En tareas exclusivamente documentales, aplicar la validación documental indicada por la tarea.
 
 Si PowerShell bloquea scripts en la sesión actual, ejecutarlo con una excepción limitada a ese proceso:
 
@@ -83,12 +91,18 @@ El build actual de Next.js descarga las fuentes Geist desde Google Fonts; puede 
 
 No hay Ruff, MyPy ni Pytest configurados en el backend. La suite existente usa `unittest`; no se agregan herramientas nuevas por este workflow.
 
-## Revisión con segundo agente
+## Reviewer independiente
 
-El agente implementador realiza el cambio y ejecuta las validaciones relevantes. El agente revisor trabaja en un contexto separado e inicialmente no modifica código. Examina el diff contra `main`, errores, regresiones, seguridad, autorización, integridad de datos, contratos frontend/backend, tests faltantes y cambios fuera de alcance. Presenta sus hallazgos primero; sólo modifica archivos después si el usuario lo solicita.
+No ejecutar automáticamente un reviewer independiente completo para toda tarea. Es especialmente recomendable en cambios relacionados con autenticación, autorización, aislamiento multicliente, seguridad, contratos API, persistencia, migraciones, transacciones, concurrencia, uploads/downloads, operaciones destructivas o cambios transversales relevantes.
+
+Para cambios pequeños, visuales o localizados pueden ser suficientes los tests focalizados, la validación automática y la validación visual en Desktop cuando corresponda.
+
+Cuando exista reviewer, debe trabajar únicamente sobre `git diff`, archivos directamente relacionados, contratos afectados y tests correspondientes. Inicialmente no modifica archivos, no repite validación visual y no ejecuta FULL salvo que necesite verificar un hallazgo concreto.
 
 ## Validación funcional y cierre
 
-Para cambios visibles, levantar backend y frontend, recorrer en el navegador el flujo afectado y comprobar estados normales y errores relevantes. Las pruebas automáticas y la lectura estática no reemplazan esta comprobación.
+Para cambios visibles, Codex Desktop debe levantar backend y frontend, recorrer en el navegador el flujo afectado y comprobar estados normales y errores relevantes. Las pruebas automáticas y la lectura estática no reemplazan esta comprobación. Desde VS Code, esta validación se informa como pendiente para Desktop.
 
 Antes de un commit, ejecutar las validaciones pertinentes, revisar seguridad y casos límite, y consultar `git status` y `git diff`. No hacer commit ni push automáticamente.
+
+El principio general es optimizar contexto y usage eliminando trabajo redundante, sin reducir seguridad, integridad de datos, aislamiento multicliente, calidad de tests, trazabilidad ni mantenibilidad.

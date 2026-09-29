@@ -199,6 +199,8 @@ Según el alcance ejecutar:
 * tests de integración relevantes;
 * suite backend completa cuando el cambio sea transversal.
 
+Durante el desarrollo de cambios exclusivamente backend, preferir tests focalizados y `.\scripts\validate.ps1 -Backend` desde la raíz. Aplican además las reglas de FULL único y no redundante definidas en `/AGENTS.md`.
+
 Desde `backend/`, la suite completa se ejecuta con `python -B -m unittest discover -s tests -p "test_*.py"` usando el intérprete del entorno. `-B` evita reescribir archivos `.pyc` versionados. Las pruebas de integración se omiten sin `TEST_DATABASE_URL` configurada para una PostgreSQL exclusiva de testing.
 
 Revisar también:

@@ -239,9 +239,13 @@ Según el cambio ejecutar:
 * tests relevantes;
 * build cuando el cambio pueda afectar compilación o routing.
 
+Durante el desarrollo de cambios exclusivamente frontend, preferir tests focalizados y `.\scripts\validate.ps1 -Frontend` desde la raíz. Aplican además las reglas de FULL único y no redundante definidas en `/AGENTS.md`.
+
 Revisar warnings nuevos.
 
 No declarar terminada una tarea con errores nuevos de build o typecheck relacionados con el cambio.
+
+La navegación sobre `localhost`, la validación visual, responsive, UX, interacción real y estados loading/error corresponden a Codex Desktop. Desde VS Code deben informarse como pendientes y no ejecutarse por defecto.
 
 ## Dependencies
 
@@ -276,4 +280,3 @@ Al terminar indicar:
 * validaciones ejecutadas;
 * resultado;
 * dependencias con backend o configuraciones necesarias.
-

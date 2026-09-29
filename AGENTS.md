@@ -64,10 +64,21 @@ No realizar una auditoría completa del repositorio para cada tarea.
 Antes de modificar código:
 
 1. Identificar los archivos directamente relacionados.
-2. Inspeccionar implementaciones similares existentes.
-3. Ampliar la exploración únicamente cuando una dependencia real lo requiera.
+2. Inspeccionar sus dependencias directas, contratos relacionados e implementaciones similares existentes.
+3. Consultar únicamente las secciones relevantes de la documentación.
+4. Ampliar la exploración únicamente cuando una dependencia real lo requiera.
 
 Evitar leer carpetas o módulos completos sin necesidad.
+
+## Codex environments
+
+Codex en VS Code se utiliza para inspección de código, implementación, tests focalizados, lint, typecheck, build, análisis de `git diff` y revisión técnica de seguridad, contratos, backend, frontend y base de datos.
+
+Por defecto, desde VS Code no usar navegador, Computer Use ni realizar validaciones visuales. Si una tarea requiere navegación real o validación visual, informarla como pendiente para Codex Desktop.
+
+Codex Desktop se utiliza para navegar sobre `localhost`, validación visual y responsive, UX, interacción real con formularios, F5, browser back/forward, descargas visuales, Computer Use, inspección visual de estados loading/error y pruebas manuales de flujos.
+
+No repetir desde VS Code pruebas ya realizadas en Desktop salvo que exista un motivo técnico concreto.
 
 ## Scope control
 
@@ -115,17 +126,33 @@ Antes de considerar una tarea terminada ejecutar, según corresponda:
 * build;
 * validaciones específicas del módulo.
 
-Durante el desarrollo, usar validaciones localizadas o `.\scripts\validate.ps1 -Quick` para obtener feedback. Antes de cerrar una tarea, ejecutar `.\scripts\validate.ps1` (FULL, incluido el build); si el entorno lo impide, informar exactamente qué quedó sin ejecutar y por qué.
+Durante el desarrollo, priorizar tests focalizados. Para cambios exclusivamente backend usar `.\scripts\validate.ps1 -Backend`; para cambios exclusivamente frontend, `.\scripts\validate.ps1 -Frontend`; y durante iteración transversal, `.\scripts\validate.ps1 -Quick`.
+
+Cuando la tarea esté estable, ejecutar una vez `.\scripts\validate.ps1` (FULL, incluido el build) antes del cierre. No repetir FULL después de una revisión que no haya modificado archivos. Si después del FULL sólo se modifica documentación, no repetir tests funcionales salvo que exista una razón concreta. Para tareas exclusivamente documentales, seguir la validación específica indicada por la tarea.
 
 No declarar una tarea completa sólo porque el código parezca compilar. Ejecutar los checks existentes pertinentes y distinguir lo ejecutado de lo no ejecutado. Nunca afirmar que algo fue probado si no se ejecutó.
 
-Para cambios visibles, levantar la aplicación local cuando corresponda y probar en navegador el flujo afectado, sus estados normales y errores relevantes. La inspección estática no sustituye esta validación funcional.
+Para cambios visibles, dejar la navegación y la validación visual pendientes para Codex Desktop. La inspección estática no sustituye esta validación funcional.
 
 Si una validación no puede ejecutarse, indicar claramente:
 
 * cuál;
 * por qué;
 * qué riesgo queda pendiente.
+
+## Independent reviewer
+
+No ejecutar automáticamente un reviewer independiente completo para toda tarea. Es especialmente recomendable en cambios de autenticación, autorización, aislamiento multicliente, seguridad, contratos API, persistencia, migraciones, transacciones, concurrencia, uploads/downloads, operaciones destructivas o cambios transversales relevantes.
+
+Para cambios pequeños, visuales o localizados pueden bastar tests focalizados, validación automática y validación visual en Desktop cuando corresponda.
+
+Cuando exista reviewer, debe limitarse a `git diff`, archivos directamente relacionados, contratos afectados y tests correspondientes. Inicialmente no modifica archivos, no repite validación visual y no ejecuta FULL salvo que necesite verificar un hallazgo concreto.
+
+## Prompt efficiency
+
+Los prompts futuros deben ser breves y apoyarse en estas instrucciones persistentes. No repetir arquitectura, stack ni reglas permanentes ya documentadas.
+
+Optimizar el consumo de contexto y usage eliminando trabajo redundante, sin reducir seguridad, integridad de datos, aislamiento multicliente, calidad de tests, trazabilidad ni mantenibilidad.
 
 ## Database changes
 
