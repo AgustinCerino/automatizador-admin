@@ -1,8 +1,15 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ExecutionsTable } from "@/features/executions/components/executions-table";
 import type { ExecutionRead } from "@/features/executions/types";
+
+vi.mock(
+  "@/features/executions/components/transformation-execution-actions",
+  () => ({
+    TransformationExecutionActions: () => <span>Acciones de descarga</span>,
+  }),
+);
 
 const EXECUTION = {
   created_at: "2026-08-07T12:00:00Z",
@@ -35,6 +42,7 @@ describe("ExecutionsTable", () => {
     expect(
       screen.getByRole("link", { name: "Abrir ejecución 31" }),
     ).toHaveAttribute("href", "/transformaciones/31");
+    expect(screen.getByText("Acciones de descarga")).toBeInTheDocument();
   });
 
   it("distingue estados y muestra resultado, error o pendiente", () => {

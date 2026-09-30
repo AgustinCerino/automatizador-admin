@@ -70,6 +70,7 @@ No expandir el esquema por defecto. Si una tarea requiere modelos, tablas o rela
 | Tarea 40 — Plantillas reutilizables de Transformación Excel en frontend | Completado | Listado por proceso, creación desde la configuración persistida, aplicación confirmada sin ejecución automática, edición de metadata y desactivación lógica mediante los contratos backend existentes. |
 | Tarea 41 — Estado operativo y trazabilidad de Transformación Excel en frontend | Completado | Resumen operativo existente verificado y trazabilidad sanitizada integrada con estados aislados, reintento e invalidación tras operaciones relevantes. |
 | Tarea 42 — Historial de ejecuciones de Transformación Excel | Completado | Listado por proceso con estados, resultado disponible, errores, navegación al workspace y regreso al historial mediante contratos existentes. |
+| Tarea 43 — Descarga de resultados históricos de Transformación Excel | Completado | Descarga del XLSX disponible desde el historial según capabilities del resumen operativo, mediante el contrato de descarga existente y con preservación de headers. |
 
 ### Frontend posterior a Tarea 22
 

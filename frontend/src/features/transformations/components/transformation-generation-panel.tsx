@@ -10,8 +10,9 @@ import {
   useGenerateTransformationResult,
   useTransformationResultQuery,
 } from "@/features/transformations/api/use-configuration";
+import { downloadTransformationResult } from "@/features/transformations/api/download-transformation-result";
 import type { TransformationGenerationRead, TransformationSummary } from "@/features/transformations/types";
-import { ApiError, createApiError } from "@/lib/api/errors";
+import { ApiError } from "@/lib/api/errors";
 
 interface Props {
   isDirty: boolean;
@@ -19,35 +20,8 @@ interface Props {
   validationIsValid: boolean;
 }
 
-function filenameFromDisposition(value: string | null, fallback: string): string {
-  const match = value?.match(/filename\*?=(?:UTF-8''|\")?([^;\"]+)/i);
-  if (!match) return fallback;
-  try { return decodeURIComponent(match[1].trim()); } catch { return fallback; }
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof ApiError ? error.message : "No pudimos comunicarnos con el servidor.";
-}
-
-async function downloadResult(executionId: number, fallbackFilename: string): Promise<void> {
-  const response = await fetch(`/api/backend/transformaciones/${executionId}/resultado/descargar`, {
-    credentials: "same-origin",
-    headers: { Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
-  });
-  if (!response.ok) throw await createApiError(response);
-  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
-  if (!contentType.includes("spreadsheetml.sheet")) {
-    throw new ApiError(response.status, { message: "La descarga no devolvió un archivo XLSX válido." });
-  }
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filenameFromDisposition(response.headers.get("content-disposition"), fallbackFilename);
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
 }
 
 function ResultDetails({ result }: { result: TransformationGenerationRead }) {
@@ -72,7 +46,7 @@ export function TransformationGenerationPanel({ isDirty, summary, validationIsVa
     if (!result || isDownloading) return;
     setDownloadError(null);
     setIsDownloading(true);
-    try { await downloadResult(summary.ejecucion_id, result.nombre_archivo); }
+    try { await downloadTransformationResult(summary.ejecucion_id, result.nombre_archivo); }
     catch (error) { setDownloadError(errorMessage(error)); }
     finally { setIsDownloading(false); }
   }

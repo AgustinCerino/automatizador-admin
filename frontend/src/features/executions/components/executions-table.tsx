@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ExecutionsEmptyState } from "@/features/executions/components/executions-empty-state";
+import { TransformationExecutionActions } from "@/features/executions/components/transformation-execution-actions";
 import { getExecutionHref } from "@/features/executions/navigation";
 import type { ExecutionRead } from "@/features/executions/types";
 import { formatDateTime } from "@/lib/format-date";
@@ -138,15 +139,25 @@ export function ExecutionsTable({
                 </TableCell>
                 <TableCell className="text-right">
                   {href ? (
-                    <Button asChild size="sm" variant="outline">
-                      <Link
-                        aria-label={`Abrir ejecución ${execution.id}`}
-                        href={href}
-                      >
-                        Abrir
-                        <ExternalLink aria-hidden="true" />
-                      </Link>
-                    </Button>
+                    <div className="flex flex-col items-end gap-2 sm:flex-row sm:justify-end">
+                      {processType === "TRANSFORMACION_EXCEL" ? (
+                        <TransformationExecutionActions
+                          executionId={execution.id}
+                          fallbackFilename={
+                            getTransformationGeneration(execution)?.nombre_archivo
+                          }
+                        />
+                      ) : null}
+                      <Button asChild size="sm" variant="outline">
+                        <Link
+                          aria-label={`Abrir ejecución ${execution.id}`}
+                          href={href}
+                        >
+                          Abrir
+                          <ExternalLink aria-hidden="true" />
+                        </Link>
+                      </Button>
+                    </div>
                   ) : (
                     <span className="text-sm text-muted-foreground">
                       Sin vista disponible
