@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import type { TransformationValidationIssue, TransformationValidationRead } from "@/features/transformations/types";
 
 interface TransformationValidationPanelProps {
+  canValidate?: boolean;
   errorMessage: string | null;
   isDirty: boolean;
   isPending: boolean;
@@ -29,7 +30,7 @@ function Issues({ issues, title, variant }: { issues: TransformationValidationIs
   return <Alert variant={variant === "error" ? "destructive" : "default"}><Icon aria-hidden="true" /><AlertTitle>{title}</AlertTitle><AlertDescription><ul className="list-disc space-y-1 pl-4">{issues.map((issue) => <li key={`${issue.code}-${issue.output_column ?? ""}-${issue.source_column ?? ""}`}>{issue.message}{issue.count > 1 ? ` (${issue.count})` : ""}</li>)}</ul></AlertDescription></Alert>;
 }
 
-export function TransformationValidationPanel({ errorMessage, isDirty, isPending, isSaved, onValidate, result }: TransformationValidationPanelProps) {
+export function TransformationValidationPanel({ canValidate = true, errorMessage, isDirty, isPending, isSaved, onValidate, result }: TransformationValidationPanelProps) {
   const previewColumns = result?.columnas_salida ?? [];
   const isStale = Boolean(result && isDirty);
 
@@ -40,7 +41,7 @@ export function TransformationValidationPanel({ errorMessage, isDirty, isPending
       {isSaved && isDirty ? <Alert><AlertCircle aria-hidden="true" /><AlertTitle>Configuración modificada</AlertTitle><AlertDescription>Guardá los cambios antes de validar. El dry-run siempre utiliza la configuración persistida.</AlertDescription></Alert> : null}
       {isStale ? <Alert><TriangleAlert aria-hidden="true" /><AlertTitle>Validación desactualizada</AlertTitle><AlertDescription>El resultado anterior ya no corresponde al borrador actual.</AlertDescription></Alert> : null}
       {errorMessage ? <Alert variant="destructive"><AlertCircle aria-hidden="true" /><AlertTitle>No pudimos validar la transformación</AlertTitle><AlertDescription>{errorMessage}</AlertDescription></Alert> : null}
-      <Button disabled={!isSaved || isDirty || isPending} onClick={onValidate} type="button">{isPending ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <CheckCircle2 aria-hidden="true" />}{isPending ? "Validando…" : "Validar transformación"}</Button>
+      <Button disabled={!canValidate || !isSaved || isDirty || isPending} onClick={onValidate} type="button">{isPending ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <CheckCircle2 aria-hidden="true" />}{isPending ? "Validando…" : "Validar transformación"}</Button>
       {result && !isStale ? <div className="space-y-4" aria-live="polite">
         <Alert variant={result.valid ? "default" : "destructive"}><CheckCircle2 aria-hidden="true" /><AlertTitle>{result.valid ? "Configuración guardada y validada" : "La configuración no es válida"}</AlertTitle><AlertDescription>{result.valid ? "El resultado mostrado corresponde a la configuración persistida." : "Corregí los errores indicados antes de generar el resultado."}</AlertDescription></Alert>
         <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4"><Metric label="Filas de entrada" value={result.total_filas_entrada} /><Metric label="Después de filtros" value={result.filas_despues_filtros} /><Metric label="Filas válidas" value={result.filas_validas} /><Metric label="Duplicados eliminados" value={result.duplicados_eliminados} /><Metric label="Filas con errores" value={result.filas_con_errores} /><Metric label="Filas con advertencias" value={result.filas_con_advertencias} /></dl>

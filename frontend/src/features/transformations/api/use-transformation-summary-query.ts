@@ -2,7 +2,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { getTransformationSummary } from "@/features/transformations/api/get-transformation-summary";
+import {
+  getTransformationSummary,
+  getTransformationTrace,
+} from "@/features/transformations/api/get-transformation-summary";
 import type { TransformationSummary } from "@/features/transformations/types";
 import { useRedirectOnSessionExpired } from "@/lib/auth/use-session-expired";
 import { isPositiveInteger } from "@/lib/identifiers";
@@ -26,6 +29,19 @@ export function useTransformationSummaryQuery(executionId: number) {
     queryKey: queryKeys.transformations.summary(executionId),
     refetchInterval: (currentQuery) =>
       getTransformationSummaryRefetchInterval(currentQuery.state.data),
+    retry: shouldRetryQuery,
+    staleTime: 15_000,
+  });
+
+  useRedirectOnSessionExpired(query.error);
+  return query;
+}
+
+export function useTransformationTraceQuery(executionId: number) {
+  const query = useQuery({
+    enabled: isPositiveInteger(executionId),
+    queryFn: () => getTransformationTrace(executionId),
+    queryKey: queryKeys.transformations.trace(executionId),
     retry: shouldRetryQuery,
     staleTime: 15_000,
   });

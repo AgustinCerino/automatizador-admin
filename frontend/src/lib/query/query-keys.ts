@@ -39,6 +39,8 @@ export const queryKeys = {
       ["transformations", "detail", executionId] as const,
     summary: (executionId: number) =>
       ["transformations", "detail", executionId, "summary"] as const,
+    trace: (executionId: number) =>
+      ["transformations", "detail", executionId, "trace"] as const,
     configuration: (executionId: number) =>
       ["transformations", "detail", executionId, "configuration"] as const,
     result: (executionId: number) =>

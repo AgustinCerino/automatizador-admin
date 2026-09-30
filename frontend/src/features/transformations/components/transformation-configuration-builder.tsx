@@ -225,7 +225,7 @@ export function TransformationConfigurationBuilder({ canManageTemplates = false,
     {saveMutation.isError ? <p className="text-sm text-destructive" role="alert">{getErrorMessage(saveMutation.error)}</p> : null}
     {saveMutation.isSuccess ? <p className="text-sm text-success-foreground" role="status">ConfiguraciÃ³n guardada.</p> : null}
     <div className="flex flex-wrap gap-3"><Button disabled={!canEdit} onClick={() => { setColumns((current) => [...current, emptyColumn(nextId)]); setNextId((current) => current + 1); markDirty(); }} type="button" variant="outline"><Plus aria-hidden="true" />Agregar columna</Button><Button disabled={!canEdit || saveMutation.isPending || !sourceColumns.length} onClick={() => void save()} type="button"><Save aria-hidden="true" />{saveMutation.isPending ? "Guardandoâ€¦" : "Guardar configuraciÃ³n"}</Button></div>
-    <TransformationValidationPanel errorMessage={validateMutation.isError ? getValidationErrorMessage(validateMutation.error) : null} isDirty={isDraftDirty} isPending={validateMutation.isPending} isSaved={summary.has_configuration || saveMutation.isSuccess} onValidate={() => void validate()} result={validationResult} />
+    <TransformationValidationPanel canValidate={summary.can_validate} errorMessage={validateMutation.isError ? getValidationErrorMessage(validateMutation.error) : null} isDirty={isDraftDirty} isPending={validateMutation.isPending} isSaved={summary.has_configuration || saveMutation.isSuccess} onValidate={() => void validate()} result={validationResult} />
     <TransformationGenerationPanel isDirty={isDraftDirty} summary={summary} validationIsValid={Boolean(validationResult?.valid)} />
   </CardContent></Card></>;
 }

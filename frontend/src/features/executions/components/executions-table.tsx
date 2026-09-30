@@ -23,6 +23,79 @@ interface ExecutionsTableProps {
   processType: string;
 }
 
+interface TransformationGenerationSummary {
+  nombre_archivo?: string;
+  total_filas?: number;
+}
+
+function getTransformationGeneration(
+  execution: ExecutionRead,
+): TransformationGenerationSummary | undefined {
+  const transformation = execution.resumen_json?.transformacion_excel;
+  if (
+    typeof transformation !== "object" ||
+    transformation === null ||
+    Array.isArray(transformation)
+  ) {
+    return undefined;
+  }
+
+  const generation = (transformation as Record<string, unknown>).generacion;
+  if (
+    typeof generation !== "object" ||
+    generation === null ||
+    Array.isArray(generation)
+  ) {
+    return undefined;
+  }
+
+  const raw = generation as Record<string, unknown>;
+  return {
+    nombre_archivo:
+      typeof raw.nombre_archivo === "string" ? raw.nombre_archivo : undefined,
+    total_filas:
+      typeof raw.total_filas === "number" ? raw.total_filas : undefined,
+  };
+}
+
+function ExecutionResult({
+  execution,
+  processType,
+}: {
+  execution: ExecutionRead;
+  processType: string;
+}) {
+  if (execution.error_message) {
+    return (
+      <span className="line-clamp-2 text-sm text-destructive">
+        {execution.error_message}
+      </span>
+    );
+  }
+
+  if (processType !== "TRANSFORMACION_EXCEL") {
+    return <span className="text-muted-foreground">—</span>;
+  }
+
+  const generation = getTransformationGeneration(execution);
+  if (!generation) {
+    return <span className="text-sm text-muted-foreground">Pendiente</span>;
+  }
+
+  return (
+    <div className="min-w-40 text-sm">
+      <p className="font-medium">
+        {generation.nombre_archivo ?? "Archivo generado"}
+      </p>
+      {generation.total_filas !== undefined ? (
+        <p className="text-muted-foreground">
+          {generation.total_filas.toLocaleString("es-AR")} filas
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function ExecutionsTable({
   emptyAction,
   executions,
@@ -41,6 +114,7 @@ export function ExecutionsTable({
             <TableHead>Estado</TableHead>
             <TableHead>Creada</TableHead>
             <TableHead>Finalizada</TableHead>
+            <TableHead>Resultado</TableHead>
             <TableHead className="text-right">Acción</TableHead>
           </TableRow>
         </TableHeader>
@@ -56,6 +130,12 @@ export function ExecutionsTable({
                 </TableCell>
                 <TableCell>{formatDateTime(execution.created_at)}</TableCell>
                 <TableCell>{formatDateTime(execution.finished_at)}</TableCell>
+                <TableCell>
+                  <ExecutionResult
+                    execution={execution}
+                    processType={processType}
+                  />
+                </TableCell>
                 <TableCell className="text-right">
                   {href ? (
                     <Button asChild size="sm" variant="outline">

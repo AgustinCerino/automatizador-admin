@@ -46,8 +46,18 @@ def get_ejecucion_for_client_or_404(
     return ejecucion
 
 
-def ensure_proceso_exists(db: Session, proceso_id: int) -> None:
-    if db.get(Proceso, proceso_id) is None:
+def ensure_proceso_for_client_exists(
+    db: Session,
+    proceso_id: int,
+    cliente_id: int,
+) -> None:
+    proceso = db.execute(
+        select(Proceso).where(
+            Proceso.id == proceso_id,
+            Proceso.cliente_id == cliente_id,
+        ),
+    ).scalar_one_or_none()
+    if proceso is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El proceso indicado no existe",
@@ -61,7 +71,12 @@ def list_ejecuciones(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ) -> list[EjecucionProceso]:
-    statement = select(EjecucionProceso).order_by(EjecucionProceso.id)
+    statement = (
+        select(EjecucionProceso)
+        .join(Proceso, EjecucionProceso.proceso_id == Proceso.id)
+        .where(Proceso.cliente_id == current_user.cliente_id)
+        .order_by(EjecucionProceso.id)
+    )
 
     if proceso_id is not None:
         statement = statement.where(EjecucionProceso.proceso_id == proceso_id)
@@ -82,7 +97,11 @@ def create_ejecucion(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ) -> EjecucionProceso:
-    ensure_proceso_exists(db, ejecucion_in.proceso_id)
+    ensure_proceso_for_client_exists(
+        db,
+        ejecucion_in.proceso_id,
+        current_user.cliente_id,
+    )
 
     ejecucion = EjecucionProceso(
         proceso_id=ejecucion_in.proceso_id,

@@ -12,6 +12,10 @@ export type TransformationGeneration =
   components["schemas"]["TransformacionExcelGenerationOperationalRead"];
 export type TransformationIssue =
   components["schemas"]["TransformacionExcelOperationalIssueRead"];
+export type TransformationTraceEvent =
+  components["schemas"]["TransformacionExcelTraceEventRead"];
+export type TransformationTraceList =
+  components["schemas"]["TransformacionExcelTraceListRead"];
 export type TransformationSourceFile = Omit<
   components["schemas"]["ArchivoRead"],
   "checksum" | "ruta_storage"

@@ -20,6 +20,7 @@ import {
 import { WorkspaceSkeleton } from "@/features/transformations/components/workspace-skeleton";
 import { SourceFilePanel } from "@/features/transformations/components/source-file-panel";
 import { TransformationConfigurationBuilder } from "@/features/transformations/components/transformation-configuration-builder";
+import { TransformationTracePanel } from "@/features/transformations/components/transformation-trace-panel";
 import { ApiError } from "@/lib/api/errors";
 
 interface TransformationWorkspaceProps {
@@ -78,7 +79,17 @@ export function TransformationWorkspace({ canManageTemplates = false, executionI
   return (
     <div className="space-y-6">
       <PageHeader
-        action={<WorkspaceHeader summary={summary} />}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button asChild size="sm" variant="outline">
+              <Link href={executionsHref}>
+                <ArrowLeft aria-hidden="true" />
+                Volver al historial
+              </Link>
+            </Button>
+            <WorkspaceHeader summary={summary} />
+          </div>
+        }
         breadcrumbs={[
           { label: "Procesos", href: "/procesos" },
           { label: summary.proceso_nombre, href: executionsHref },
@@ -105,6 +116,7 @@ export function TransformationWorkspace({ canManageTemplates = false, executionI
       </div>
 
       <OperationalIssues summary={summary} />
+      <TransformationTracePanel executionId={summary.ejecucion_id} />
     </div>
   );
 }

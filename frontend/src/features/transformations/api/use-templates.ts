@@ -82,6 +82,9 @@ export function useApplyTransformationTemplate(
         queryClient.invalidateQueries({
           queryKey: queryKeys.transformations.templates(processId),
         }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.transformations.trace(executionId),
+        }),
       ]);
     },
   });

@@ -38,6 +38,11 @@ describe("TransformationValidationPanel", () => {
     expect(screen.getByRole("button", { name: "Validar transformación" })).toBeDisabled();
   });
 
+  it("respeta la capacidad de validar informada por el resumen", () => {
+    render(<TransformationValidationPanel canValidate={false} errorMessage={null} isDirty={false} isPending={false} isSaved onValidate={vi.fn()} result={null} />);
+    expect(screen.getByRole("button", { name: "Validar transformación" })).toBeDisabled();
+  });
+
   it("diferencia los errores funcionales devueltos por el backend", () => {
     render(<TransformationValidationPanel errorMessage={null} isDirty={false} isPending={false} isSaved onValidate={vi.fn()} result={{ ...RESULT, errors: [{ code: "SOURCE_COLUMN_NOT_FOUND", count: 1, message: "No existe la columna de origen" }], valid: false }} />);
     expect(screen.getByText("Errores funcionales")).toBeInTheDocument();

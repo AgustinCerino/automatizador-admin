@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getTransformationSummary } from "@/features/transformations/api/get-transformation-summary";
+import {
+  getTransformationSummary,
+  getTransformationTrace,
+} from "@/features/transformations/api/get-transformation-summary";
 import { apiFetch } from "@/lib/api/client";
 
 vi.mock("@/lib/api/client", () => ({ apiFetch: vi.fn() }));
@@ -28,5 +31,14 @@ describe("API browser de transformaciones", () => {
   it("rechaza un identificador inválido antes de usar apiFetch", () => {
     expect(() => getTransformationSummary(0)).toThrow(TypeError);
     expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("consulta la trazabilidad por el BFF explícito con GET", async () => {
+    await getTransformationTrace(31);
+
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      "/api/backend/transformaciones/31/trazabilidad",
+      { method: "GET" },
+    );
   });
 });

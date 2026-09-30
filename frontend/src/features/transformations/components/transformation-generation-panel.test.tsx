@@ -61,8 +61,14 @@ describe("TransformationGenerationPanel", () => {
 
   it("recupera un resultado existente y ofrece descargar", () => {
     queryMock.mockReturnValue({ data: { archivo_id: 9, checksum: "a", columnas_salida: ["Monto"], ejecucion_id: 31, estado_ejecucion: "COMPLETADO", extension: ".xlsx", generated_at: "2026-08-12T12:00:00Z", mime_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nombre_archivo: "resultado.xlsx", reused: true, size_bytes: 1, total_filas: 1 }, isError: false } as never);
-    render(<TransformationGenerationPanel isDirty={false} summary={{ ...SUMMARY, estado_ejecucion: "COMPLETADO", generation: { available: true, file_exists: true } }} validationIsValid={false} />);
+    render(<TransformationGenerationPanel isDirty={false} summary={{ ...SUMMARY, can_download: true, estado_ejecucion: "COMPLETADO", generation: { available: true, file_exists: true } }} validationIsValid={false} />);
     expect(screen.getByText("resultado.xlsx")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /descargar xlsx/i })).toBeEnabled();
+  });
+
+  it("bloquea la descarga cuando el backend no informa la capacidad", () => {
+    queryMock.mockReturnValue({ data: { archivo_id: 9, checksum: "a", columnas_salida: ["Monto"], ejecucion_id: 31, estado_ejecucion: "COMPLETADO", extension: ".xlsx", generated_at: "2026-08-12T12:00:00Z", mime_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nombre_archivo: "resultado.xlsx", reused: true, size_bytes: 1, total_filas: 1 }, isError: false } as never);
+    render(<TransformationGenerationPanel isDirty={false} summary={{ ...SUMMARY, estado_ejecucion: "COMPLETADO", generation: { available: true, file_exists: true } }} validationIsValid={false} />);
+    expect(screen.getByRole("button", { name: /descargar xlsx/i })).toBeDisabled();
   });
 });

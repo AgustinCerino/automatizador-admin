@@ -614,6 +614,33 @@ export async function handleGetTransformationSummaryRequest(
   return result.ok ? jsonResponse(result.value) : result.response;
 }
 
+export async function handleGetTransformationTraceRequest(
+  rawExecutionId: string,
+  dependencies: AuthenticatedRouteDependencies,
+): Promise<Response> {
+  const executionId = parsePositiveInteger(rawExecutionId);
+
+  if (!executionId) {
+    return invalidIdentifierResponse();
+  }
+
+  const sessionResult = await resolveSession(dependencies);
+
+  if (!sessionResult.ok) {
+    return sessionResult.response;
+  }
+
+  const result = await callBackend(
+    `/transformaciones-excel/${executionId}/trazabilidad`,
+    sessionResult.value,
+    dependencies,
+    { headers: { Accept: "application/json" }, method: "GET" },
+    { 400: ERROR_PAYLOADS.incompatibleTransformation },
+  );
+
+  return result.ok ? jsonResponse(result.value) : result.response;
+}
+
 export async function handleGetTransformationConfigurationRequest(
   rawExecutionId: string,
   dependencies: AuthenticatedRouteDependencies,

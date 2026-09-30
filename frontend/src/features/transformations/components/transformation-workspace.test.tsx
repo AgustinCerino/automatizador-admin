@@ -16,6 +16,10 @@ vi.mock("@/features/transformations/components/transformation-configuration-buil
   TransformationConfigurationBuilder: () => <section>Constructor de configuraciÃ³n</section>,
 }));
 
+vi.mock("@/features/transformations/components/transformation-trace-panel", () => ({
+  TransformationTracePanel: () => <section>Historial operativo</section>,
+}));
+
 const useSummaryMock = vi.mocked(useTransformationSummaryQuery);
 const SUMMARY = {
   action_required: "CONFIGURE",
@@ -55,6 +59,11 @@ describe("TransformationWorkspace", () => {
     expect(screen.getAllByText("Transformación mensual").length).toBeGreaterThan(0);
     expect(screen.getByText("Configurar transformación")).toBeInTheDocument();
     expect(screen.getByText("CARGADO")).toBeInTheDocument();
+    expect(screen.getByText("Historial operativo")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Volver al historial" })).toHaveAttribute(
+      "href",
+      "/procesos/4/ejecuciones",
+    );
   });
 
   it("normaliza el error y ofrece volver al listado seguro", () => {

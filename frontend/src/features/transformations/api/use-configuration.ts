@@ -41,6 +41,7 @@ export function useSaveTransformationConfiguration(executionId: number) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.transformations.configuration(executionId) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.transformations.summary(executionId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.transformations.trace(executionId) }),
       ]);
     },
   });
@@ -53,7 +54,10 @@ export function useValidateTransformationConfiguration(executionId: number) {
     mutationFn: () => validateTransformationConfiguration(executionId),
     onError: handleSessionExpired,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.transformations.summary(executionId) });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.transformations.summary(executionId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.transformations.trace(executionId) }),
+      ]);
     },
   });
 }
@@ -78,7 +82,10 @@ export function useGenerateTransformationResult(executionId: number) {
     onError: handleSessionExpired,
     onSuccess: async (result) => {
       queryClient.setQueryData(queryKeys.transformations.result(executionId), result);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.transformations.summary(executionId) });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.transformations.summary(executionId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.transformations.trace(executionId) }),
+      ]);
     },
   });
 }
