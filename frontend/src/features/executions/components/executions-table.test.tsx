@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { ExecutionsTable } from "@/features/executions/components/executions-table";
@@ -23,6 +24,52 @@ const EXECUTION = {
   usuario_id: 12,
 } satisfies ExecutionRead;
 
+const FILTERABLE_EXECUTIONS = [
+  {
+    ...EXECUTION,
+    estado: "COMPLETADO",
+    resumen_json: {
+      transformacion_excel: {
+        generacion: { nombre_archivo: "ventas-agosto.xlsx", total_filas: 20 },
+      },
+    },
+  },
+  {
+    ...EXECUTION,
+    created_at: "2026-08-09T12:00:00Z",
+    error_message: "Archivo inválido",
+    estado: "ERROR",
+    id: 32,
+  },
+  {
+    ...EXECUTION,
+    created_at: "2026-08-08T12:00:00Z",
+    estado: "COMPLETADO",
+    id: 33,
+    resumen_json: {
+      transformacion_excel: {
+        generacion: { nombre_archivo: "compras-agosto.xlsx", total_filas: 15 },
+      },
+    },
+  },
+] satisfies ExecutionRead[];
+
+function renderFilterableHistory() {
+  return render(
+    <ExecutionsTable
+      emptyAction={<button>Nueva ejecución</button>}
+      executions={FILTERABLE_EXECUTIONS}
+      processType="TRANSFORMACION_EXCEL"
+    />,
+  );
+}
+
+function visibleExecutionIds(): string[] {
+  return screen
+    .getAllByRole("link", { name: /abrir ejecución/i })
+    .map((link) => link.getAttribute("aria-label") ?? "");
+}
+
 describe("ExecutionsTable", () => {
   it("muestra registros, estado y enlace Abrir para Transformación Excel", () => {
     render(
@@ -35,7 +82,7 @@ describe("ExecutionsTable", () => {
 
     expect(screen.getByRole("columnheader", { name: "ID" })).toBeInTheDocument();
     expect(screen.getByText("#31")).toBeInTheDocument();
-    expect(screen.getByText("CARGADO")).toHaveAttribute(
+    expect(screen.getByText("CARGADO", { selector: "span" })).toHaveAttribute(
       "data-tone",
       "information",
     );
@@ -75,12 +122,19 @@ describe("ExecutionsTable", () => {
       />,
     );
 
-    expect(screen.getByText("COMPLETADO")).toHaveAttribute(
+    expect(
+      screen.getByText("COMPLETADO", { selector: "span" }),
+    ).toHaveAttribute(
       "data-tone",
       "success",
     );
-    expect(screen.getByText("ERROR")).toHaveAttribute("data-tone", "error");
-    expect(screen.getByText("PROCESANDO")).toHaveAttribute(
+    expect(screen.getByText("ERROR", { selector: "span" })).toHaveAttribute(
+      "data-tone",
+      "error",
+    );
+    expect(
+      screen.getByText("PROCESANDO", { selector: "span" }),
+    ).toHaveAttribute(
       "data-tone",
       "warning",
     );
@@ -130,5 +184,112 @@ describe("ExecutionsTable", () => {
     expect(
       screen.getByRole("button", { name: "Nueva ejecución" }),
     ).toBeInTheDocument();
+  });
+
+  it("busca por nombre de archivo o ID", async () => {
+    const user = userEvent.setup();
+    renderFilterableHistory();
+
+    const search = screen.getByRole("searchbox", { name: "Buscar" });
+    await user.type(search, "compras");
+    expect(visibleExecutionIds()).toEqual(["Abrir ejecución 33"]);
+
+    await user.clear(search);
+    await user.type(search, "#31");
+    expect(visibleExecutionIds()).toEqual(["Abrir ejecución 31"]);
+  });
+
+  it("filtra por estado", async () => {
+    const user = userEvent.setup();
+    renderFilterableHistory();
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Estado" }),
+      "ERROR",
+    );
+
+    expect(visibleExecutionIds()).toEqual(["Abrir ejecución 32"]);
+    expect(screen.getByRole("status")).toHaveTextContent("1 resultado visible");
+  });
+
+  it("combina búsqueda y estado", async () => {
+    const user = userEvent.setup();
+    renderFilterableHistory();
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Estado" }),
+      "COMPLETADO",
+    );
+    await user.type(
+      screen.getByRole("searchbox", { name: "Buscar" }),
+      "compras",
+    );
+
+    expect(visibleExecutionIds()).toEqual(["Abrir ejecución 33"]);
+  });
+
+  it("ordena por fecha con las más recientes primero por defecto", async () => {
+    const user = userEvent.setup();
+    renderFilterableHistory();
+
+    expect(visibleExecutionIds()).toEqual([
+      "Abrir ejecución 32",
+      "Abrir ejecución 33",
+      "Abrir ejecución 31",
+    ]);
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Orden" }),
+      "oldest",
+    );
+    expect(visibleExecutionIds()).toEqual([
+      "Abrir ejecución 31",
+      "Abrir ejecución 33",
+      "Abrir ejecución 32",
+    ]);
+  });
+
+  it("limpia filtros y restablece el orden predeterminado", async () => {
+    const user = userEvent.setup();
+    renderFilterableHistory();
+
+    const search = screen.getByRole("searchbox", { name: "Buscar" });
+    const status = screen.getByRole("combobox", { name: "Estado" });
+    const order = screen.getByRole("combobox", { name: "Orden" });
+    await user.type(search, "compras");
+    await user.selectOptions(status, "COMPLETADO");
+    await user.selectOptions(order, "oldest");
+    await user.click(screen.getByRole("button", { name: "Limpiar filtros" }));
+
+    expect(search).toHaveValue("");
+    expect(status).toHaveValue("ALL");
+    expect(order).toHaveValue("newest");
+    expect(visibleExecutionIds()).toEqual([
+      "Abrir ejecución 32",
+      "Abrir ejecución 33",
+      "Abrir ejecución 31",
+    ]);
+  });
+
+  it("muestra un estado vacío cuando no hay coincidencias", async () => {
+    const user = userEvent.setup();
+    renderFilterableHistory();
+
+    await user.type(
+      screen.getByRole("searchbox", { name: "Buscar" }),
+      "sin coincidencias",
+    );
+
+    expect(
+      screen.getByRole("heading", {
+        name: "No hay ejecuciones que coincidan.",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "0 resultados visibles",
+    );
+    expect(
+      screen.queryByRole("link", { name: /abrir ejecución/i }),
+    ).not.toBeInTheDocument();
   });
 });
